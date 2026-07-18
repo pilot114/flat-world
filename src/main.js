@@ -2,32 +2,16 @@ import { createLifer, liferColor, liferTypes } from './core/lifers.js';
 import { BERSERK_BIT, World } from './core/world.js';
 import { drawSelection, drawSnapshot } from './render/draw.js';
 import { getEventLocation } from './utils/dom.js';
+import { SCENARIOS } from './scenarios.js';
 import { Graph } from './ui/graph.js';
 import { InfoPanel } from './ui/infoPanel.js';
 import { Player } from './ui/player.js';
 import { SpeciesPanel } from './ui/speciesPanel.js';
+import { Tabs } from './ui/tabs.js';
 
 const WIDTH = 1000;
 const HEIGHT = 500;
 const FPS = 60;
-
-// Начальное население мира: тип -> количество.
-const SETUP = {
-    Grass: 100,
-    Cow: 100,
-    Wolf: 10,
-    Ghost: 20,
-
-    Stone: 200,
-    Clip: 200,
-    Paper: 200
-};
-
-// Трава не размножается сама — без подсева коровы съедят её за десяток секунд
-// и травоядная цепочка вымрет.
-const SPAWN = {
-    Grass: 0.05
-};
 
 function main() {
     const canvas = document.getElementById('canvas');
@@ -35,23 +19,18 @@ function main() {
     canvas.height = HEIGHT;
     const context = canvas.getContext('2d');
 
-    const world = new World(WIDTH, HEIGHT);
-    for (const [type, count] of Object.entries(SETUP)) {
-        world.populate(type, count);
-    }
-    for (const [type, chance] of Object.entries(SPAWN)) {
-        world.setSpawnRate(type, chance);
-    }
-    world.refreshCounts();
-
-    const species = new SpeciesPanel('species');
-    const info = new InfoPanel('worldInfo', 'selectInfo');
-    const graph = new Graph('#graph', world);
+    const info = new InfoPanel('worldInfo', 'selectInfo', 'selectTabs');
     // цвета по индексу типа — в кадре истории тип хранится числом
     const palette = liferTypes().map(liferColor);
 
     const player = new Player(
-        { buttonId: 'playPause', sliderId: 'timeline', labelId: 'playerLabel' },
+        {
+            buttonId: 'playPause',
+            sliderId: 'timeline',
+            labelId: 'playerLabel',
+            speedId: 'speed',
+            speedLabelId: 'speedLabel'
+        },
         {
             onToggle: () => {
                 const paused = !player.paused;
@@ -67,7 +46,44 @@ function main() {
             }
         }
     );
-    player.setPaused(false);
+
+    // Смена вкладки пересобирает мир, список видов и график целиком,
+    // поэтому цикл отрисовки и обработчик кликов читают текущую сессию
+    // через ссылку, а не захватывают её при старте.
+    let session = null;
+    const tabs = new Tabs('tabs', SCENARIOS, (scenario) => {
+        session = startScenario(scenario, player);
+    });
+    tabs.select(SCENARIOS[0].id);
+
+    // Клик по канвасу: с выбранным типом — подселяем существо,
+    // без выбора — выделяем ближайшее.
+    canvas.addEventListener('click', (event) => {
+        const location = getEventLocation(canvas, event);
+
+        if (session.species.selected) {
+            session.world.add(createLifer(session.species.selected, location.x, location.y));
+        } else {
+            session.world.selectByLocation(location);
+        }
+    });
+
+    startLoop({ context, info, player, palette, getSession: () => session });
+}
+
+// Собирает мир сценария вместе с его списком видов и графиком.
+function startScenario(scenario, player) {
+    // виды сценария — ключи setup: их и показываем в списке и на графике
+    const types = Object.keys(scenario.setup);
+    const world = new World(WIDTH, HEIGHT);
+
+    for (const [type, count] of Object.entries(scenario.setup)) {
+        world.populate(type, count);
+    }
+    for (const [type, chance] of Object.entries(scenario.spawn || {})) {
+        world.setSpawnRate(type, chance);
+    }
+    world.refreshCounts();
 
     // матч закончился — останавливаем ход времени, но перемотку оставляем.
     // Модальный alert здесь не годится: он замораживает вкладку целиком.
@@ -76,54 +92,55 @@ function main() {
         player.announce(winner + ' победил');
     };
 
-    // Клик по канвасу: с выбранным типом — подселяем существо,
-    // без выбора — выделяем ближайшее.
-    canvas.addEventListener('click', (event) => {
-        const location = getEventLocation(canvas, event);
+    player.reset();
 
-        if (species.selected) {
-            world.add(createLifer(species.selected, location.x, location.y));
-        } else {
-            world.selectByLocation(location);
-        }
-    });
-
-    startLoop({ world, context, info, species, player, graph, palette });
+    return {
+        world,
+        species: new SpeciesPanel('species', types),
+        graph: new Graph('#graph', world, types),
+        // время жизни мира без учёта пауз — иначе простой занижает расчётный fps
+        elapsed: 0
+    };
 }
 
-function startLoop({ world, context, info, species, player, graph, palette }) {
+function startLoop({ context, info, player, palette, getSession }) {
     const step = 1000 / FPS;
     // Больше пяти шагов за кадр не догоняем: после сворачивания вкладки
-    // накопленный долг иначе выльется в рывок.
+    // накопленный долг иначе выльется в рывок. Порог растёт вместе со
+    // скоростью — на x10 десять шагов за кадр это норма, а не долг.
     const MAX_STEPS = 5;
 
     let last = performance.now();
     let debt = 0;
-    // время жизни мира без учёта пауз — иначе простой занижает расчётный fps
-    let elapsed = 0;
 
     // Цикл не останавливается никогда: на паузе и при перемотке
     // мир не обновляется, но кадр всё равно нужно перерисовать.
     (function frame() {
         requestAnimationFrame(frame);
 
+        const session = getSession();
+        const { world, species, graph } = session;
+
         const now = performance.now();
         const delta = now - last;
         last = now;
 
         // Шаг мира фиксирован: ttl и скорости заданы в тиках, поэтому частота
-        // симуляции не должна зависеть от герцовки экрана.
+        // симуляции не должна зависеть от герцовки экрана. Ускорение меняет
+        // не длину шага, а число шагов на секунду реального времени.
         const live = !player.paused && !world.stopped;
         if (live) {
-            debt += delta;
+            const maxSteps = Math.ceil(MAX_STEPS * player.speed);
+            debt += delta * player.speed;
+
             let steps = 0;
-            while (debt >= step && steps < MAX_STEPS) {
-                elapsed += step;
-                world.update(elapsed);
+            while (debt >= step && steps < maxSteps) {
+                session.elapsed += step;
+                world.update(session.elapsed);
                 debt -= step;
                 steps++;
             }
-            if (steps === MAX_STEPS) {
+            if (steps === maxSteps) {
                 debt = 0;
             }
         }

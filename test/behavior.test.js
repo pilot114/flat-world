@@ -137,3 +137,47 @@ test('симуляция матча идёт без ошибок и сходит
         assert.ok(Number.isFinite(lifer.x) && Number.isFinite(lifer.y), 'координаты валидны');
     }
 });
+
+test('circle ведёт по окружности вокруг центра, минуя импульс', () => {
+    const world = new World(1000, 500);
+    const ghost = world.add(createLifer('Ghost', 0, 0));
+    ghost.dx = 5;
+    ghost.dy = 5;
+
+    // четверть оборота: 90 тиков = 90 градусов, точка над центром мира
+    world.tick = 90;
+    animate(ghost, world, Anim.CIRCLE, null, []);
+
+    assert.equal(Math.round(ghost.x), 500);
+    assert.equal(Math.round(ghost.y), 100);
+    // параметрическое движение не проходит через импульс и не складывается с ним
+    assert.equal(ghost.dx, 5);
+    assert.equal(ghost.dy, 5);
+});
+
+test('random задаёт новый импульс на каждом вызове', () => {
+    const world = new World(500, 500);
+    const ghost = world.add(createLifer('Ghost', 250, 250));
+    const seen = new Set();
+
+    for (let i = 0; i < 20; i++) {
+        animate(ghost, world, Anim.RANDOM, null, []);
+        assert.ok(Math.abs(Math.hypot(ghost.dx, ghost.dy) - ghost.speed) < 1e-9, 'модуль равен скорости');
+        seen.add(ghost.dx.toFixed(6));
+    }
+
+    // в отличие от particle, импульс не запоминается
+    assert.ok(seen.size > 1, 'импульс должен меняться');
+});
+
+test('незнакомый тип движения гасит импульс', () => {
+    const world = new World(500, 500);
+    const ghost = world.add(createLifer('Ghost', 250, 250));
+    ghost.dx = 5;
+    ghost.dy = 5;
+
+    animate(ghost, world, 'нет такого типа', null, []);
+
+    assert.equal(ghost.dx, 0);
+    assert.equal(ghost.dy, 0);
+});

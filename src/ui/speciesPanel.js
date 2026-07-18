@@ -1,16 +1,19 @@
-import { liferColor, liferTypes } from '../core/lifers.js';
+import { liferColor } from '../core/lifers.js';
 
 // Список типов существ: цвет, название, текущее количество.
 // Он же служит палитрой — выбранный тип подселяется кликом по канвасу.
+// types задаёт сценарий: чужие виды в списке только мешали бы.
 export class SpeciesPanel {
-    constructor(id) {
+    constructor(id, types) {
         this.selected = null;
         this.rows = new Map();
 
         const container = document.getElementById(id);
+        // панель пересобирается при смене сценария — старые строки убираем
+        container.replaceChildren();
 
-        // показываем все типы из реестра, даже вымершие: иначе их не заселить заново
-        for (const type of liferTypes()) {
+        // показываем все виды сценария, даже вымершие: иначе их не заселить заново
+        for (const type of types) {
             const row = this.createRow(type);
             this.rows.set(type, row);
             container.appendChild(row.el);

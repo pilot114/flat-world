@@ -1,4 +1,5 @@
-// Минимальный статический сервер: ES-модули не грузятся с file://.
+// Минимальный статический сервер
+
 import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 import { readFile } from 'node:fs/promises';

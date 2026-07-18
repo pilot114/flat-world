@@ -15,21 +15,20 @@ const WANDER = { anim: Anim.PARTICLE, vector: null };
 // Побочные эффекты (поедание соседей) выполняются здесь же.
 // nears — список соседей; передаётся снаружи, чтобы не искать их дважды за тик.
 export function decide(lifer, world, nears = world.getNear(lifer)) {
-    switch (lifer.behavior) {
-        case Behavior.BERSERK:
-            return berserk(lifer, world, nears);
-        case Behavior.COMPETE:
-            return compete(lifer, world, nears);
-        case Behavior.HERBIVORE:
-            return herbivore(lifer, world, nears);
-        case Behavior.PREDATOR:
-            return predator(lifer, world, nears);
-        case Behavior.TIMID:
-            return timid(lifer, nears);
-        default:
-            return WANDER;
-    }
+    const decider = DECIDERS[lifer.behavior];
+    // поведения нет или оно незнакомое — существо просто дрейфует
+    return decider ? decider(lifer, world, nears) : WANDER;
 }
+
+// Поведение -> функция решения. Все принимают (lifer, world, nears),
+// даже если не всё им нужно: единая сигнатура — цена вызова по таблице.
+const DECIDERS = {
+    [Behavior.BERSERK]: berserk,
+    [Behavior.COMPETE]: compete,
+    [Behavior.HERBIVORE]: herbivore,
+    [Behavior.PREDATOR]: predator,
+    [Behavior.TIMID]: timid
+};
 
 // Берсерк ест всех подряд.
 function berserk(lifer, world, nears) {
@@ -117,44 +116,66 @@ function compete(lifer, world, nears) {
     return target ? chase(target) : WANDER;
 }
 
-// Корова: бежит от волка, иначе идёт есть траву.
+// Травоядное: бежит от своей угрозы, иначе идёт есть свою цель.
 function herbivore(lifer, world, nears) {
-    const wolf = getNearest(nears, lifer, isWolf);
-    const grass = getNearest(nears, lifer, isGrass);
+    const threat = nearestOfType(lifer, nears, lifer.danger);
+    const food = nearestOfType(lifer, nears, lifer.target);
 
-    if (grass && isReachable(lifer, grass)) {
-        world.remove(grass);
+    if (food && isReachable(lifer, food)) {
+        world.remove(food);
     }
 
-    if (wolf) {
-        return escape(wolf);
+    if (threat) {
+        return escape(threat);
     }
-    return grass ? chase(grass) : WANDER;
+    return food ? chase(food) : WANDER;
 }
 
-// Волк: догоняет и ест корову.
+// Хищник: догоняет и ест свою цель.
 function predator(lifer, world, nears) {
-    const cow = getNearest(nears, lifer, isCow);
-    if (!cow) {
+    const prey = nearestOfType(lifer, nears, lifer.target);
+    if (!prey) {
         return WANDER;
     }
 
-    if (isReachable(lifer, cow)) {
-        world.remove(cow);
+    if (isReachable(lifer, prey)) {
+        world.remove(prey);
     }
 
-    return chase(cow);
+    return chase(prey);
 }
 
-// Призрак: убегает от любого соседа.
-function timid(lifer, nears) {
+// Призрак: убегает от любого соседа. world не нужен — соседи уже переданы.
+function timid(lifer, world, nears) {
     const nearest = getNearest(nears, lifer);
     return nearest ? escape(nearest) : WANDER;
 }
 
-const isWolf = (object) => object.type === 'Wolf';
-const isGrass = (object) => object.type === 'Grass';
-const isCow = (object) => object.type === 'Cow';
+// Ближайший сосед заданного вида. Отдельная функция вместо предиката-замыкания:
+// decide() зовётся для каждого существа в каждом тике, и замыкание там —
+// лишняя аллокация на ровном месте.
+function nearestOfType(lifer, nears, type) {
+    if (!type) {
+        return null;
+    }
+
+    let nearest = null;
+    let nearestRange = Infinity;
+
+    for (const object of nears) {
+        if (object.type !== type) {
+            continue;
+        }
+
+        const range = getRangeSquared(lifer, object);
+        if (range < nearestRange) {
+            nearest = object;
+            nearestRange = range;
+        }
+    }
+
+    return nearest;
+}
 
 function isReachable(lifer, target) {
     return getRange(lifer, target) < lifer.radius;

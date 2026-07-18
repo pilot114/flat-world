@@ -10,6 +10,27 @@
 			margin: 0;
 			padding: 1em;
 		}
+		#tabs {
+			display: flex;
+			gap: 0.5em;
+			width: 1000px;
+			padding-bottom: 1em;
+		}
+		.tab {
+			font: inherit;
+			font-size: 13px;
+			padding: 6px 14px;
+			border: 1px solid #c8bfa4;
+			border-radius: 4px;
+			background-color: #f2ead6;
+			color: #555;
+			cursor: pointer;
+		}
+		.tab.active {
+			background-color: #555;
+			border-color: #555;
+			color: cornsilk;
+		}
 		/* высота колонок зафиксирована, чтобы растущий текст не двигал канвас */
 		#container {
 			display: flex;
@@ -18,18 +39,52 @@
 			height: 240px;
 			padding-bottom: 1em;
 		}
-		#worldInfo, #selectInfo {
+		#worldInfo, #selectPanel {
 			width: 220px;
 			height: 100%;
+		}
+		#worldInfo {
 			overflow-y: auto;
+		}
+		#selectPanel {
+			display: flex;
+			flex-direction: column;
+			gap: 0.5em;
+			min-height: 0;
+		}
+		#selectInfo {
+			overflow-y: auto;
+		}
+		/* вкладок классов бывает до четырёх, и они делят колонку в 220px —
+		   поэтому они мельче вкладок сценариев и переносятся по строкам */
+		#selectTabs {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 4px;
+		}
+		#selectTabs .tab {
+			padding: 2px 6px;
+			font-size: 11px;
 		}
 		#graph {
 			flex: 0 0 400px;
 		}
+		/* цвет линии задаётся атрибутом stroke по виду существа —
+		   правило CSS перебило бы его, поэтому цвета здесь нет */
 		.line {
 			fill: none;
-			stroke: #000;
 			stroke-width: 1.5px;
+		}
+		/* оси рисуются вручную, поэтому их вид задаётся здесь целиком */
+		.axis .domain,
+		.axis .tick line {
+			stroke: #000;
+			fill: none;
+		}
+		.axis text {
+			font-family: sans-serif;
+			font-size: 10px;
+			fill: #000;
 		}
 		#canvas {
 			background-color: #ddd;
@@ -84,6 +139,22 @@
 			font-size: 12px;
 			color: #555;
 		}
+		#speedControl {
+			display: flex;
+			align-items: center;
+			gap: 0.5em;
+			flex: 0 0 auto;
+			font-size: 12px;
+			color: #555;
+		}
+		#speed {
+			width: 90px;
+		}
+		/* ширина под «×0.25», чтобы соседи не дёргались при смене множителя */
+		#speedLabel {
+			width: 3em;
+			font-variant-numeric: tabular-nums;
+		}
 		pre {
 			font-size: 12px;
 			margin: 0;
@@ -92,20 +163,28 @@
 	</style>
 </head>
 <body>
+	<div id="tabs"></div>
 	<div id="container">
 		<pre id="worldInfo"></pre>
 		<svg id="graph" width="400" height="200"></svg>
 		<div id="species"></div>
-		<pre id="selectInfo"></pre>
+		<div id="selectPanel">
+			<div id="selectTabs"></div>
+			<pre id="selectInfo"></pre>
+		</div>
 	</div>
 	<div id="controls">
 		<button id="playPause" type="button">⏸ Пауза</button>
 		<input type="range" id="timeline" min="0" max="0" value="0" disabled>
 		<span id="playerLabel"></span>
+		<span id="speedControl">
+			<label for="speed">скорость</label>
+			<input type="range" id="speed">
+			<span id="speedLabel"></span>
+		</span>
 	</div>
 	<canvas id="canvas"></canvas>
 
-	<script src="./vendor/d3.js"></script>
 	<script type="module" src="./src/main.js"></script>
 </body>
 </html>

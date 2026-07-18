@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { BERSERK_BIT, World } from '../src/core/world.js';
-import { Base, Grass, Stone, Clip, Paper, createLifer, liferTypes, typeByIndex } from '../src/core/lifers.js';
+import { Base, Grass, Stone, Clip, Paper, createLifer, liferFieldGroups, liferTypes, typeByIndex } from '../src/core/lifers.js';
 
 test('add назначает уникальные id', () => {
     const world = new World(100, 100);
@@ -244,4 +244,37 @@ test('камень-ножницы-бумага: цикл danger/target замк�
     assert.equal(stone.danger, paper.type);
     assert.equal(clip.danger, stone.type);
     assert.equal(paper.danger, clip.type);
+});
+
+test('поля существа разложены по классам иерархии', () => {
+    const groups = liferFieldGroups(new Stone(0, 0));
+
+    assert.deepEqual(groups.map((group) => group.name), ['Base', 'Creature', 'Unit', 'Stone']);
+
+    // каждое поле попадает ровно в одну группу, и вместе они покрывают объект
+    const fields = groups.flatMap((group) => group.fields);
+    assert.equal(new Set(fields).size, fields.length, 'поле не должно попасть в две группы');
+    assert.deepEqual(fields.slice().sort(), Object.keys(new Stone(0, 0)).sort());
+});
+
+test('поле уходит классу, который задаёт ему значение последним', () => {
+    const byName = (lifer) => new Map(liferFieldGroups(lifer).map((g) => [g.name, new Set(g.fields)]));
+
+    const stone = byName(new Stone(0, 0));
+    // Stone только переопределяет — если считать по появлению ключа,
+    // его вкладка осталась бы пустой
+    assert.ok(stone.get('Stone').has('color'), 'свой цвет — у Stone');
+    assert.ok(stone.get('Stone').has('danger'), 'своя угроза — у Stone');
+    assert.ok(stone.get('Unit').has('kills'), 'счётчик убийств — у Unit');
+    assert.ok(stone.get('Creature').has('speed'), 'скорость — у Creature');
+    assert.ok(stone.get('Base').has('x'), 'координаты — у Base');
+
+    // у неподвижной травы нет промежуточных классов
+    assert.deepEqual([...byName(new Grass(0, 0)).keys()], ['Base', 'Grass']);
+});
+
+test('группы полей одинаковы для существ одного класса', () => {
+    // разбор кэшируется по классу: панель зовёт его на каждом кадре
+    assert.equal(liferFieldGroups(new Stone(0, 0)), liferFieldGroups(new Stone(5, 5)));
+    assert.notEqual(liferFieldGroups(new Stone(0, 0)), liferFieldGroups(new Clip(0, 0)));
 });

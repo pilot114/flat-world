@@ -52,6 +52,10 @@ export class Creature extends Base {
         super(x, y);
         this.radiusView = 100;
         this.speed = 1;
+
+        // виды-ориентиры поведения: кого едим и от кого убегаем
+        this.danger = null;
+        this.target = null;
     }
 
     update(world) {
@@ -90,6 +94,8 @@ export class Cow extends Creature {
         this.radius = 10;
         this.ttl = MINUTE * 2;
         this.color = 'peru';
+        this.danger = 'Wolf';
+        this.target = 'Grass';
     }
 }
 
@@ -101,6 +107,22 @@ export class Wolf extends Creature {
         this.ttl = MINUTE;
         this.speed = 1.2;
         this.color = 'gray';
+        this.target = 'Cow';
+    }
+}
+
+// Ловец призраков: быстрее добычи лишь на пять сотых, поэтому берёт её
+// в основном у границы мира, где призраку некуда деться.
+export class Human extends Creature {
+    constructor(x, y) {
+        super(x, y);
+        this.type = 'Human';
+        this.behavior = Behavior.PREDATOR;
+        this.radius = 10;
+        this.ttl = MINUTE * 3;
+        this.speed = 0.55;
+        this.color = 'teal';
+        this.target = 'Ghost';
     }
 }
 
@@ -111,9 +133,6 @@ export class Unit extends Creature {
         this.type = 'Unit';
         this.behavior = Behavior.COMPETE;
         this.radius = 10;
-
-        this.danger = null;
-        this.target = null;
 
         this.kills = 0;
         this.berserkCounter = 0;
@@ -180,7 +199,7 @@ export class Paper extends Unit {
 }
 
 // Реестр доступных моделей: тип -> класс.
-export const LIFERS = { Grass, Ghost, Cow, Wolf, Stone, Clip, Paper };
+export const LIFERS = { Grass, Ghost, Human, Cow, Wolf, Stone, Clip, Paper };
 
 const TYPES = Object.keys(LIFERS);
 const TYPE_INDEX = new Map(TYPES.map((type, index) => [type, index]));
@@ -205,6 +224,74 @@ export function createLifer(type, x, y) {
         throw new Error('Unknown lifer: ' + type);
     }
     return new Model(x, y);
+}
+
+// Поля существа, разложенные по классам иерархии: [{name, fields}]
+// от базового класса к самому конкретному.
+//
+// В JS поля лежат на объекте плоско, и кто их завёл — по объекту не видно.
+// Поэтому создаём по образцу на каждый класс цепочки и сравниваем образцы
+// между собой: поле уходит тому классу, у чьего образца значение впервые
+// отличается от родительского.
+//
+// Считать «кто завёл поле» по одному только появлению ключа было бы точнее
+// по букве, но бесполезно на практике: Stone не заводит ни одного своего
+// поля — он переопределяет type, color, danger и target, и его вкладка
+// осталась бы пустой.
+//
+// Класс, переприсвоивший поле тем же значением, что и у родителя, так
+// не отличить — поле останется за родителем.
+const FIELD_GROUPS = new Map();
+
+export function liferFieldGroups(lifer) {
+    const Model = lifer.constructor;
+
+    if (!FIELD_GROUPS.has(Model)) {
+        FIELD_GROUPS.set(Model, buildFieldGroups(Model));
+    }
+    return FIELD_GROUPS.get(Model);
+}
+
+function buildFieldGroups(Model) {
+    const chain = classChain(Model);
+    // конструкторы всех моделей принимают (x, y) и заполняют поля целиком,
+    // поэтому образца достаточно, чтобы увидеть вклад каждого класса
+    const probes = chain.map((Class) => new Class(0, 0));
+    const groups = chain.map((Class) => ({ name: Class.name, fields: [] }));
+
+    // у самого конкретного образца набор полей полный: конструктор
+    // сначала зовёт super, а потом дописывает своё
+    for (const field of Object.keys(probes[probes.length - 1])) {
+        groups[fieldOwner(field, probes)].fields.push(field);
+    }
+
+    return groups;
+}
+
+// Индекс класса, задающего полю его значение последним.
+function fieldOwner(field, probes) {
+    let owner = 0;
+
+    for (let i = 1; i < probes.length; i++) {
+        const introduced = !(field in probes[i - 1]);
+        if (introduced || !Object.is(probes[i][field], probes[i - 1][field])) {
+            owner = i;
+        }
+    }
+
+    return owner;
+}
+
+// Цепочка наследования от базового класса к переданному.
+// Останавливаемся на Function.prototype — у него нет своего prototype.
+function classChain(Model) {
+    const chain = [];
+
+    for (let Class = Model; Class && Class.prototype; Class = Object.getPrototypeOf(Class)) {
+        chain.unshift(Class);
+    }
+
+    return chain;
 }
 
 const COLORS = {};

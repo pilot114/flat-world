@@ -20,45 +20,20 @@ export function animate(lifer, world, name, vector, nears = world.getNear(lifer)
         vector = { x: nearest.x, y: nearest.y };
     }
 
-    switch (name) {
-        case Anim.RANDOM:
-            // для рандома удобнее сразу задавать угол
-            setImpulseByAngle(lifer, randInt(0, 360));
-            break;
+    // Движение по окружности — единственное параметрическое: оно само ставит
+    // координаты и не проходит ни через импульс, ни через отражение от границ.
+    // В общую таблицу оно не ложится, поэтому разбирается отдельно.
+    if (name === Anim.CIRCLE) {
+        moveByCircle(lifer, world);
+        return;
+    }
 
-        // используем информацию о текущем импульсе через сам объект: получаем и сохраняем
-        case Anim.PARTICLE:
-            if (lifer.dx === 0 && lifer.dy === 0) {
-                setImpulseByAngle(lifer, randInt(0, 360));
-            }
-            break;
-
-        case Anim.CIRCLE: {
-            // параметрическое движение по окружности вокруг центра мира
-            const radius = 150;
-            const centerX = world.width / 2;
-            const centerY = world.height / 2;
-
-            // масштабируем тики до градусов и переводим в радианы
-            const theta = (world.tick % 360) * (2 * Math.PI / 360);
-            lifer.x = centerX + radius * Math.cos(theta);
-            lifer.y = centerY - radius * Math.sin(theta);
-            // дальнейшие действия для параметрического движения не нужны
-            return;
-        }
-
-        case Anim.CHASE:
-            setImpulseToPoint(lifer, vector, 1);
-            break;
-
-        case Anim.ESCAPE:
-            setImpulseToPoint(lifer, vector, -1);
-            break;
-
-        default:
-            lifer.dx = 0;
-            lifer.dy = 0;
-            break;
+    const setImpulse = IMPULSES[name];
+    if (setImpulse) {
+        setImpulse(lifer, vector);
+    } else {
+        lifer.dx = 0;
+        lifer.dy = 0;
     }
 
     // отражаемся от границ мира
@@ -73,7 +48,36 @@ export function animate(lifer, world, name, vector, nears = world.getNear(lifer)
     lifer.y += lifer.dy;
 }
 
+// Тип движения -> как задать импульс. Само перемещение общее для всех:
+// импульс отражается от границ мира и складывается с координатами.
+const IMPULSES = {
+    // для рандома удобнее сразу задавать угол
+    [Anim.RANDOM]: (lifer) => setImpulseByAngle(lifer, randInt(0, 360)),
+
+    // используем информацию о текущем импульсе через сам объект: получаем и сохраняем
+    [Anim.PARTICLE]: (lifer) => {
+        if (lifer.dx === 0 && lifer.dy === 0) {
+            setImpulseByAngle(lifer, randInt(0, 360));
+        }
+    },
+
+    [Anim.CHASE]: (lifer, vector) => setImpulseToPoint(lifer, vector, 1),
+    [Anim.ESCAPE]: (lifer, vector) => setImpulseToPoint(lifer, vector, -1)
+};
+
 const isAlive = (object) => !object.removed;
+
+// Параметрическое движение по окружности вокруг центра мира.
+function moveByCircle(lifer, world) {
+    const radius = 150;
+    const centerX = world.width / 2;
+    const centerY = world.height / 2;
+
+    // масштабируем тики до градусов и переводим в радианы
+    const theta = (world.tick % 360) * (2 * Math.PI / 360);
+    lifer.x = centerX + radius * Math.cos(theta);
+    lifer.y = centerY - radius * Math.sin(theta);
+}
 
 function setImpulseByAngle(lifer, angle) {
     const radians = angle * (Math.PI / 180);
