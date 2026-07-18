@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Дерево линий</title>
+    <style>
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            background-color: cornsilk;
+            padding: 1em;
+        }
+        #canvas {
+            background-color: #ddd;
+            display: block;
+            margin-bottom: 1em;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1em;
+        }
+        .controls label {
+            display: flex;
+            flex-direction: column;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        .controls input {
+            width: 90px;
+            font: inherit;
+            font-weight: normal;
+        }
+        output {
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
+</head>
+<body>
+    <p>
+        Дано: найти формулу для расчёта максимального количества равных прямых линий,
+        соединяющих N точек. Точки можно располагать произвольно.
+    </p>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <label>offsetX <input type="number" id="offsetX" value="600" step="10"></label>
+        <label>offsetY <input type="number" id="offsetY" value="300" step="10"></label>
+        <label>length <input type="number" id="length" value="190" step="10"></label>
+        <label>count <input type="number" id="count" value="12" min="1" max="14"></label>
+        <label>phase <input type="number" id="phase" value="0" min="0"></label>
+        <label>stepAngle <input type="number" id="stepAngle" value="30" step="1"></label>
+        <label>линий в кадре <output id="linesCount">0</output></label>
+    </div>
+
+    <script src="./drawLine.js"></script>
+    <script>
+        // Глубина вложенности: на каждом уровне из конца отрезка растёт новый веер.
+        const DEPTH = 4;
+
+        const fields = ['offsetX', 'offsetY', 'length', 'count', 'phase', 'stepAngle'];
+        const inputs = {};
+        const params = {};
+
+        for (const name of fields) {
+            inputs[name] = document.getElementById(name);
+            // значения input приходят строками — приводим сразу, иначе арифметика врёт
+            const read = () => { params[name] = Number(inputs[name].value) || 0; };
+            inputs[name].addEventListener('input', read);
+            read();
+        }
+
+        const linesCount = document.getElementById('linesCount');
+        let drawn = 0;
+
+        // Рекурсивный веер: из точки xy выходит count отрезков с шагом stepAngle.
+        function fan(context, xy, depth) {
+            if (depth === 0) {
+                return;
+            }
+            for (let i = params.phase; i < params.count; i++) {
+                const end = drawLine(context, xy, params.length, i * params.stepAngle);
+                drawn++;
+                fan(context, end, depth - 1);
+            }
+        }
+
+        window.addEventListener('load', function () {
+            const canvas = document.getElementById('canvas');
+            canvas.width = 1200;
+            canvas.height = 600;
+            const context = canvas.getContext('2d');
+
+            (function draw() {
+                requestAnimationFrame(draw);
+
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                drawn = 0;
+                fan(context, [params.offsetX, params.offsetY], DEPTH);
+                linesCount.textContent = drawn.toLocaleString('ru');
+            })();
+        });
+    </script>
+</body>
+</html>

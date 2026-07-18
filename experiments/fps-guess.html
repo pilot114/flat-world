@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+	<meta charset="UTF-8">
+	<title>Где больше fps?</title>
+	<style>
+		body {
+			font-family: Helvetica, Arial, sans-serif;
+			background-color: cornsilk;
+			padding: 1em;
+		}
+		.test_canvas {
+			background-color: #ddd;
+			cursor: pointer;
+		}
+		#result {
+			margin-top: 1em;
+			font-size: 18px;
+			min-height: 1.5em;
+		}
+		#score {
+			color: #555;
+			font-size: 14px;
+		}
+	</style>
+</head>
+<body>
+	<h1>Где больше fps?</h1>
+	<p>Один канвас рисуется на 60 fps, другой на 120. Кликните по тому, где, на ваш взгляд, кадров больше.</p>
+
+	<canvas id="canvas_1" class="test_canvas" width="500" height="500"></canvas>
+	<canvas id="canvas_2" class="test_canvas" width="500" height="500"></canvas>
+
+	<div id="result"></div>
+	<div id="score"></div>
+
+<script>
+	const SIZE = 500;
+	const SPEED = 2;
+
+	function drawCircle(context, x, y) {
+		context.fillStyle = 'green';
+		context.beginPath();
+		context.arc(x, y, 50, 0, Math.PI * 2);
+		context.closePath();
+		context.fill();
+	}
+
+	// Рисует кружок по окружности с заданной частотой. Возвращает id интервала,
+	// чтобы вызывающий мог его остановить — иначе интервалы копятся с каждым раундом.
+	function repeat(fps, context) {
+		let prevTime = Date.now();
+
+		return setInterval(function () {
+			context.clearRect(0, 0, SIZE, SIZE);
+
+			// «замедляем» время
+			const freezeTime = Math.floor(prevTime / 10);
+			// масштабируем до градусов и переводим в радианы
+			const degree = (freezeTime % 360) * SPEED;
+			const theta = degree * (2 * Math.PI / 360);
+
+			drawCircle(context, 250 + 100 * Math.cos(theta), 250 - 150 * Math.sin(theta));
+			prevTime = Date.now();
+		}, 1000 / fps);
+	}
+
+	window.addEventListener('load', function () {
+		const contexts = [
+			document.getElementById('canvas_1').getContext('2d'),
+			document.getElementById('canvas_2').getContext('2d')
+		];
+		const result = document.getElementById('result');
+		const score = document.getElementById('score');
+
+		let intervals = [];
+		let fastSide = 0;
+		let wins = 0;
+		let rounds = 0;
+
+		function newRound() {
+			// останавливаем прошлый раунд, иначе таймеры накапливаются
+			intervals.forEach(clearInterval);
+
+			fastSide = Math.round(Math.random());
+			intervals = [
+				repeat(fastSide === 0 ? 120 : 60, contexts[0]),
+				repeat(fastSide === 1 ? 120 : 60, contexts[1])
+			];
+		}
+
+		document.querySelectorAll('.test_canvas').forEach(function (canvas, side) {
+			canvas.addEventListener('click', function () {
+				rounds++;
+				if (side === fastSide) {
+					wins++;
+					result.textContent = 'Верно — здесь было 120 fps';
+				} else {
+					result.textContent = 'Мимо: 120 fps был на соседнем канвасе';
+				}
+				score.textContent = `угадано ${wins} из ${rounds}`;
+				newRound();
+			});
+		});
+
+		newRound();
+	});
+</script>
+</body>
+</html>

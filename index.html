@@ -1,160 +1,111 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
+	<meta charset="UTF-8">
 	<title>flat world</title>
 	<style>
 		body {
 			background-color: cornsilk;
-			padding: 0 20em;
+			font-family: Helvetica, Arial, sans-serif;
+			margin: 0;
+			padding: 1em;
+		}
+		/* высота колонок зафиксирована, чтобы растущий текст не двигал канвас */
+		#container {
+			display: flex;
+			align-items: flex-start;
+			gap: 1em;
+			height: 240px;
+			padding-bottom: 1em;
+		}
+		#worldInfo, #selectInfo {
+			width: 220px;
+			height: 100%;
+			overflow-y: auto;
+		}
+		#graph {
+			flex: 0 0 400px;
 		}
 		.line {
 			fill: none;
 			stroke: #000;
 			stroke-width: 1.5px;
 		}
-		#container {
+		#canvas {
+			background-color: #ddd;
+			display: block;
+		}
+		#species {
+			width: 130px;
+			font-size: 13px;
+		}
+		/* цвет, название, количество — легенда и палитра одновременно */
+		.species {
 			display: flex;
-			padding-bottom: 1em;
+			align-items: center;
+			gap: 0.5em;
+			padding: 2px 0;
+			cursor: pointer;
 		}
-		#info {
-			width: 250px;
-			height: 240px;
+		.species.active .species-name {
+			font-weight: bold;
+			text-decoration: underline;
 		}
-		#graph {
+		.species-dot {
+			width: 10px;
+			height: 10px;
+			border-radius: 50%;
+		}
+		.species-name {
 			flex: 1;
 		}
-		#canvas {
-			background-color: #ddd
+		.species-count {
+			font-variant-numeric: tabular-nums;
 		}
-		#selectInfo {
-			position: absolute;
-			top: 0px;
-			left: 1350px;
-		}
-		#palette {
-			position: absolute;
-			top: 10px;
-			left: 1000px;
-		}
-		#player {
+		#controls {
+			display: flex;
+			align-items: center;
+			gap: 1em;
 			width: 1000px;
-			border: 1px solid green;
-			border-radius: 3px;
+			padding-bottom: 0.5em;
 		}
-
-		.active {
-			border: 2px solid black;
+		#playPause {
+			flex: 0 0 auto;
+			font: inherit;
+			font-size: 13px;
+			padding: 4px 10px;
+			cursor: pointer;
+		}
+		#timeline {
+			flex: 1;
+		}
+		#playerLabel {
+			flex: 0 0 190px;
+			font-size: 12px;
+			color: #555;
+		}
+		pre {
+			font-size: 12px;
+			margin: 0;
+			white-space: pre-wrap;
 		}
 	</style>
 </head>
 <body>
 	<div id="container">
-		<div id="info">
-			<div id="worldInfo"></div>
-			<hr>
-			<div id="countsInfo"></div>
-			<div id="selectInfo"></div>
-		</div>
+		<pre id="worldInfo"></pre>
 		<svg id="graph" width="400" height="200"></svg>
-		<div id="palette"></div>
+		<div id="species"></div>
+		<pre id="selectInfo"></pre>
+	</div>
+	<div id="controls">
+		<button id="playPause" type="button">⏸ Пауза</button>
+		<input type="range" id="timeline" min="0" max="0" value="0" disabled>
+		<span id="playerLabel"></span>
 	</div>
 	<canvas id="canvas"></canvas>
-	<input type="range" id="player" min="0" max="1000" name="Timeline"/>
+
+	<script src="./vendor/d3.js"></script>
+	<script type="module" src="./src/main.js"></script>
 </body>
-
-<script type="text/javascript" src="./vendor/d3.js"></script>
-<script type="text/javascript" src="./Helpers.js"></script>
-<script type="text/javascript" src="./Animation.js"></script>
-<script type="text/javascript" src="./Behavior.js"></script>
-<script type="text/javascript" src="./Lifers.js"></script>
-<script type="text/javascript" src="./World.js"></script>
-<script type="text/javascript" src="./Graph.js"></script>
-<script type="text/javascript" src="./Memory.js"></script>
-<script type="text/javascript" src="./Player.js"></script>
-<script type="text/javascript" src="./Palette.js"></script>
-
-<script type="text/javascript">
-
-window.onload = function() {
-	let canvas = document.getElementById('canvas');
-    let context = canvas.getContext('2d');
-	canvas.width = 1000;
-	canvas.height = 500;
-
-    canvas.addEventListener("click", function(event){
-        let eventLocation = getEventLocation(this, event);
-        world.selectByLocation(eventLocation);
-    });
-
-    world = new World(canvas.width, canvas.height);
-    // createLifers(world, "Ghost", 20);
-    // createLifers(world, "Grass", 100);
-    // createLifers(world, "Cow", 100);
-    // createLifers(world, "Wolf", 10);
-
-    createLifers(world, "Stone", 200);
-    createLifers(world, "Clip", 200);
-    createLifers(world, "Paper", 200);
-
-    // createRandomLifers(world, 100);
-
-    let fps = 60;
-    let start = Date.now();
-    let x = Date.now();
-    let interval = 1000/fps;
-    let delta;
-    let now;
-
-    graphInit();
-
-    let palette = new Palette('palette');
-
-    (function draw() {
-        if (world.stopped) {
-            return;
-        }
-		requestAnimationFrame(draw);
-
-        console.log(palette.selected);
-
-        now = Date.now();
-        delta = now - x;
-        x = now - delta % interval;
-
-        if (delta > interval) {
-            context.clearRect(0, 0, canvas.width, canvas.height);
-
-            world.update(now-start);
-			world.draw(context);
-
-            if (Math.random() > 0.95) {
-                // createLifers(world, "Grass", 1);
-			}
-
-            document.getElementById('worldInfo').innerText = objectToString({
-                tick: world.tick,
-                ms: world.ms,
-                fps: Math.round(1000 / (world.ms / world.tick)), // просто проверка
-                historyMemory: memorySizeOf(world.history),
-            });
-
-			document.getElementById('countsInfo').innerText = objectToString(world.getCounts());
-
-            if (world.select) {
-                let output = '';
-                for (let property in world.select) {
-                    if (typeof world.select[property] != 'function') {
-                        output += property + ': ' + world.select[property]+"\n";
-					}
-                }
-
-                document.getElementById('selectInfo').innerText = output;
-			} else {
-                document.getElementById('selectInfo').innerText = '';
-			}
-        }
-	})();
-}
-
-</script>
 </html>

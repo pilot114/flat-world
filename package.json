@@ -1,0 +1,11 @@
+{
+  "name": "flat-world",
+  "version": "1.0.0",
+  "description": "Симуляция плоского мира: существа, поведения и график популяций на canvas",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "test": "node --test test/*.test.js"
+  }
+}
