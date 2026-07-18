@@ -73,7 +73,9 @@ function digest(world) {
         lifer.radius,
         lifer.speed,
         lifer.ttl,
-        lifer.behavior
+        lifer.energy,
+        lifer.behavior,
+        lifer.state
     ].join(':'));
 
     return [

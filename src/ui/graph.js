@@ -1,4 +1,4 @@
-import { liferColor } from '../core/lifers.js';
+import { liferColor } from '../core/species.js';
 import { linearScale, linePath, niceMax, ticks } from '../utils/chart.js';
 
 const NS = 'http://www.w3.org/2000/svg';

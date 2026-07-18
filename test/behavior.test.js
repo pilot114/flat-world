@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 
 import { World } from '../src/core/world.js';
 import { Anim, animate } from '../src/core/animate.js';
-import { decide } from '../src/core/behavior.js';
-import { createLifer } from '../src/core/lifers.js';
+import { Behavior, State, decide } from '../src/core/behavior.js';
+import { createLifer } from '../src/core/species.js';
 
 test('волк догоняет корову', () => {
     const world = new World(500, 500);
@@ -46,7 +46,7 @@ test('от берсерка бегут даже те, кому он в обыч�
     const world = new World(500, 500);
     const stone = world.add(createLifer('Stone', 100, 100));
     const clip = world.add(createLifer('Clip', 160, 100));
-    clip.behavior = 'berserk';
+    clip.state = State.BERSERK;
 
     const { anim, vector } = decide(stone, world);
 
@@ -61,7 +61,8 @@ test('боец входит в режим берсерка после 5 убий
 
     stone.updateBerserk(world);
 
-    assert.equal(stone.behavior, 'berserk');
+    assert.equal(stone.state, State.BERSERK);
+    assert.equal(stone.behavior, Behavior.COMPETE, 'режим не отменяет роль вида');
     assert.equal(stone.color, 'black');
     // 300 тиков (5 секунд), минус один — он списывается в том же тике
     assert.equal(stone.berserkTtl, 299);

@@ -25,15 +25,13 @@ export function drawSelectLabel(context, lifer, text) {
     context.fillText(text, lifer.x, lifer.y + 20);
 }
 
-// Кадр из истории. palette — цвета по индексу типа,
-// berserkBit в поле типа означает, что существо было чёрным.
-export function drawSnapshot(context, frame, palette, berserkBit) {
-    const { count, xs, ys, radii, types } = frame;
+// Кадр из истории. colorOf(type, flags) отдаёт цвет по индексу вида и его
+// состоянию — какие бывают состояния, отрисовке знать незачем.
+export function drawSnapshot(context, frame, colorOf) {
+    const { count, xs, ys, radii, types, flags } = frame;
 
     for (let i = 0; i < count; i++) {
-        const type = types[i];
-
-        context.fillStyle = type & berserkBit ? 'black' : palette[type & (berserkBit - 1)];
+        context.fillStyle = colorOf(types[i], flags[i]);
         context.beginPath();
         context.arc(xs[i], ys[i], radii[i], 0, Math.PI * 2);
         context.closePath();
@@ -48,3 +46,7 @@ export function drawSelection(context, lifer) {
     }
     drawSelectLabel(context, lifer, 'id:' + lifer.id);
 }
+
+// Что рисовать поверх кадра истории, решает мир (world.selectionInFrame):
+// координаты берутся из кадра, а не у живого существа. Отрисовке достаточно
+// того же drawSelection — она не отличает живое существо от записи в кадре.

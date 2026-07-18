@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { World } from '../src/core/world.js';
 import { SpatialGrid } from '../src/core/grid.js';
-import { createLifer } from '../src/core/lifers.js';
+import { createLifer } from '../src/core/species.js';
 
 // Эталон: поиск соседей полным перебором — сетка обязана совпадать с ним.
 function naiveNear(world, lifer) {
@@ -120,5 +120,5 @@ test('служебное поле ячейки не попадает в сост
     const fields = Object.keys(lifer);
 
     assert.equal(fields.some((field) => field.toLowerCase().includes('cell')), false);
-    assert.equal(typeof lifer.isBerserk(), 'boolean');
+    assert.equal(typeof lifer.frameFlags(), 'number');
 });

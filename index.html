@@ -14,6 +14,17 @@
 			display: flex;
 			gap: 0.5em;
 			width: 1000px;
+			padding-bottom: 0.75em;
+		}
+		/* высота фиксирована под три строки: описания разной длины иначе
+		   двигали бы канвас при переключении вкладок */
+		#scenarioInfo {
+			margin: 0;
+			width: 1000px;
+			height: 3.9em;
+			font-size: 13px;
+			line-height: 1.3;
+			color: #555;
 			padding-bottom: 1em;
 		}
 		.tab {
@@ -164,6 +175,7 @@
 </head>
 <body>
 	<div id="tabs"></div>
+	<p id="scenarioInfo"></p>
 	<div id="container">
 		<pre id="worldInfo"></pre>
 		<svg id="graph" width="400" height="200"></svg>

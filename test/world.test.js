@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { BERSERK_BIT, World } from '../src/core/world.js';
-import { Base, Grass, Stone, Clip, Paper, createLifer, liferFieldGroups, liferTypes, typeByIndex } from '../src/core/lifers.js';
+import { World } from '../src/core/world.js';
+import { Base, Flag, Grass, Stone, Clip, Paper, createLifer, liferFieldGroups, liferTypes, typeByIndex } from '../src/core/species.js';
 
 test('add назначает уникальные id', () => {
     const world = new World(100, 100);
@@ -63,18 +63,20 @@ test('history пишет кадр каждые 10 тиков', () => {
     assert.equal(frame.xs[0], 11); // координаты округляются до пикселей
     assert.equal(frame.ys[0], 21);
     assert.equal(frame.radii[0], 8);
-    assert.equal(typeByIndex(frame.types[0] & (BERSERK_BIT - 1)), 'Grass');
+    assert.equal(typeByIndex(frame.types[0]), 'Grass');
+    assert.equal(frame.flags[0], 0);
 });
 
-test('кадр истории занимает 6 байт на существо', () => {
+test('кадр истории занимает 11 байт на существо', () => {
     const world = new World(500, 500);
     world.populate('Stone', 50);
     world.populate('Clip', 50);
 
     world.update(0);
 
-    assert.equal(world.history[0].bytes, 100 * 6);
-    assert.equal(world.historyBytes, 100 * 6);
+    // 2+2 координаты, радиус, вид, флаги и 4 байта id
+    assert.equal(world.history[0].bytes, 100 * 11);
+    assert.equal(world.historyBytes, 100 * 11);
 });
 
 test('в кадр попадают только живые существа', () => {
@@ -115,11 +117,100 @@ test('в кадре истории видно, что боец в режиме �
     world.update(0);
 
     const frame = world.history[0];
-    assert.ok(frame.types[0] & BERSERK_BIT, 'старший бит помечает берсерка');
-    assert.equal(typeByIndex(frame.types[0] & (BERSERK_BIT - 1)), 'Stone');
+    assert.ok(frame.flags[0] & Flag.BERSERK, 'флаг помечает берсерка');
+    // вид в кадре остаётся видом — состояние его не подменяет
+    assert.equal(typeByIndex(frame.types[0]), 'Stone');
 });
 
-test('история не растёт бесконечно — старые кадры вытесняются', () => {
+test('берсерк остаётся бойцом своего вида и не заканчивает матч', () => {
+    const world = new World(500, 500);
+    const stone = world.add(new Stone(30, 40));
+    world.add(new Clip(480, 480));
+    stone.berserkCounter = 5;
+    world.onFinish = () => assert.fail('матч не окончен: бойцов всё ещё два вида');
+
+    world.update(0);
+
+    assert.equal(stone.state, 'berserk');
+    assert.equal(stone.behavior, 'compete', 'роль вида берсерком не затирается');
+    assert.equal(world.competitorTypes, 2);
+});
+
+test('при перемотке клик выбирает то, что видно в кадре, а не живое', () => {
+    const world = new World(500, 500);
+    const drifter = world.add(new Grass(100, 100));
+    const other = world.add(new Grass(150, 150));
+
+    world.update(0);
+    const frame = world.history[0];
+
+    // существо уехало: на канвасе кадр из прошлого, живое стоит уже не там
+    drifter.x = 450;
+    drifter.y = 450;
+
+    // целимся туда, где оно нарисовано в кадре
+    assert.equal(world.selectByFrameLocation(frame, { x: 100, y: 100 }), drifter);
+
+    // а по живым координатам в той же точке нет никого — старый код
+    // выделил бы здесь other, оказавшегося ближе всех
+    assert.equal(world.selectByLocation({ x: 100, y: 100 }), other);
+});
+
+test('съеденное существо из кадра всё равно выделяется', () => {
+    const world = new World(500, 500);
+    const doomed = world.add(new Grass(100, 100));
+    world.add(new Grass(400, 400));
+
+    world.update(0);
+    const frame = world.history[0];
+    world.remove(doomed);
+
+    // живого объекта нет — панели полей взять неоткуда
+    assert.equal(world.selectByFrameLocation(frame, { x: 100, y: 100 }), null);
+
+    // но выделение состоялось: в кадре его есть чем пометить
+    assert.equal(world.selectId, doomed.id);
+    assert.equal(world.selectionInFrame(frame).id, doomed.id);
+});
+
+test('выделение — это id, а живой объект лишь его разрешение', () => {
+    const world = new World(500, 500);
+    const grass = world.add(new Grass(10, 10));
+
+    world.select = grass;
+    assert.equal(world.select, grass);
+    assert.equal(world.selectId, grass.id);
+
+    world.remove(grass);
+
+    // объекта больше нет, но выделение помнит, кого выбрали
+    assert.equal(world.select, null);
+    assert.equal(world.selectId, grass.id);
+});
+
+test('кадр хранит id — по нему точка связывается с живым существом', () => {
+    const world = new World(500, 500);
+    const grass = world.add(new Grass(10, 20));
+
+    world.update(0);
+
+    assert.equal(world.history[0].ids[0], grass.id);
+});
+
+test('песочница не объявляет победу и не останавливает время', () => {
+    const world = new World(500, 500);
+    world.matchEnds = false;
+    world.add(new Stone(10, 10));
+    world.onFinish = () => assert.fail('в песочнице матча нет');
+
+    world.update(0);
+
+    // одинокий боец иначе тут же оказался бы единственным видом
+    assert.equal(world.competitorTypes, 1);
+    assert.equal(world.stopped, false, 'время должно идти дальше');
+});
+
+test('история хранится целиком, с самого первого кадра', () => {
     const world = new World(500, 500);
     world.add(new Grass(10, 20));
 
@@ -127,10 +218,22 @@ test('история не растёт бесконечно — старые к�
         world.update(i);
     }
 
-    assert.equal(world.history.length, 600);
-    // остались последние кадры, а не первые
+    // кадр каждые 10 тиков, ничего не вытесняется
+    assert.equal(world.history.length, 620);
+    assert.equal(world.history[0].tick, 0, 'самый первый кадр на месте');
     assert.equal(world.history.at(-1).tick, 6190);
-    assert.ok(world.history[0].tick > 0);
+});
+
+test('historyBytes считает всю историю, а не окно', () => {
+    const world = new World(500, 500);
+    world.populate('Stone', 10);
+
+    for (let i = 0; i < 100; i++) {
+        world.update(i);
+    }
+
+    const total = world.history.reduce((sum, frame) => sum + frame.bytes, 0);
+    assert.equal(world.historyBytes, total);
 });
 
 test('существо исчезает, когда заканчивается ttl', () => {
@@ -246,23 +349,141 @@ test('камень-ножницы-бумага: цикл danger/target замк�
     assert.equal(paper.danger, clip.type);
 });
 
+test('значения вида лежат на прототипе, а не в каждой особи', () => {
+    const stone = new Stone(0, 0);
+
+    // особь хранит только то, что у неё меняется
+    assert.deepEqual(Object.keys(stone).sort(),
+        ['berserkCounter', 'berserkTtl', 'dx', 'dy', 'energy', 'id', 'kills', 'removed', 'state', 'x', 'y'].sort());
+
+    assert.equal(stone.color, 'orange', 'а вид читается через прототип');
+    assert.equal(Object.hasOwn(stone, 'color'), false);
+});
+
+test('изменение величины у особи не трогает её вид', () => {
+    const grown = new Stone(0, 0);
+    grown.radius += 5;
+
+    assert.equal(grown.radius, 15);
+    assert.equal(new Stone(0, 0).radius, 10, 'соседний камень остался прежним');
+    assert.equal(Stone.prototype.radius, 10, 'и описание вида тоже');
+});
+
+test('травоядное ест, не заводя счётчиков бойца', () => {
+    const world = new World(500, 500);
+    const cow = world.add(createLifer('Cow', 100, 100));
+    const grass = world.add(new Grass(102, 100));
+
+    world.update(0);
+
+    assert.equal(grass.removed, true);
+    assert.equal(cow.kills, undefined, 'счётчики убийств — дело только бойцов');
+});
+
+test('погоня тратит силы, а дрейф их возвращает', () => {
+    const world = new World(500, 500);
+    const wolf = world.add(createLifer('Wolf', 100, 100));
+    world.add(createLifer('Cow', 160, 100));
+
+    world.update(0);
+    const afterChase = wolf.energy;
+    assert.ok(afterChase < wolf.energyMax, 'погоня стоит сил');
+
+    // корова с глаз долой — волку некого догонять, он дрейфует и отдыхает
+    world.remove(world.state[1]);
+    world.update(1);
+
+    assert.ok(wolf.energy > afterChase, 'в покое силы возвращаются');
+});
+
+test('обессиленное существо движется вполсилы', () => {
+    const ghost = createLifer('Ghost', 100, 100);
+
+    assert.equal(ghost.pace, ghost.speed, 'при полном запасе — скорость вида');
+
+    ghost.energy = 0;
+    assert.equal(ghost.pace, ghost.speed * 0.5);
+
+    // множитель, а не остановка: обессиленный всё же ползёт
+    assert.ok(ghost.pace > 0);
+});
+
+test('добыча возвращает силы, но не выше предела вида', () => {
+    const world = new World(500, 500);
+    const cow = world.add(createLifer('Cow', 100, 100));
+    const grass = world.add(new Grass(200, 200));
+    cow.energy = 10;
+
+    cow.eat(world, grass);
+
+    assert.equal(grass.removed, true);
+    assert.equal(cow.energy, 10 + grass.radius * 20, 'сытность соразмерна размеру добычи');
+
+    // до отвала: остаток корма пропадает, впрок его не запасёшь
+    cow.energy = cow.energyMax - 1;
+    cow.eat(world, new Grass(0, 0));
+
+    assert.equal(cow.energy, cow.energyMax, 'выше предела вида запас не растёт');
+});
+
+test('запас сил не уходит в минус', () => {
+    const wolf = createLifer('Wolf', 100, 100);
+    wolf.energy = 0;
+
+    for (let i = 0; i < 100; i++) {
+        wolf.spend('chase');
+    }
+
+    assert.equal(wolf.energy, 0);
+});
+
+test('берсерк выжигает запас быстрее обычного бойца', () => {
+    const calm = createLifer('Stone', 100, 100);
+    const berserk = createLifer('Stone', 100, 100);
+    // берсерк отличается от бойца полуторной скоростью — за неё он и платит
+    berserk.speed *= 1.5;
+
+    calm.spend('chase');
+    berserk.spend('chase');
+
+    const spent = (lifer) => lifer.energyMax - lifer.energy;
+    assert.ok(spent(berserk) > spent(calm) * 1.4, 'скорость дорожает вместе с расходом');
+});
+
+test('неподвижному существу силы не нужны', () => {
+    const grass = new Grass(10, 10);
+
+    // энергия — механика движения, у травы её нет вовсе
+    assert.equal(grass.energy, undefined);
+    assert.equal('energy' in grass, false);
+});
+
 test('поля существа разложены по классам иерархии', () => {
-    const groups = liferFieldGroups(new Stone(0, 0));
+    const stone = new Stone(0, 0);
+    const groups = liferFieldGroups(stone);
 
     assert.deepEqual(groups.map((group) => group.name), ['Base', 'Creature', 'Unit', 'Stone']);
 
-    // каждое поле попадает ровно в одну группу, и вместе они покрывают объект
+    // каждое поле попадает ровно в одну группу
     const fields = groups.flatMap((group) => group.fields);
     assert.equal(new Set(fields).size, fields.length, 'поле не должно попасть в две группы');
-    assert.deepEqual(fields.slice().sort(), Object.keys(new Stone(0, 0)).sort());
+
+    // вместе группы покрывают и поля особи, и значения её вида
+    for (const own of Object.keys(stone)) {
+        assert.ok(fields.includes(own), 'поле особи должно попасть в группу: ' + own);
+    }
+    for (const field of fields) {
+        assert.notEqual(stone[field], undefined, 'поле группы должно читаться у особи: ' + field);
+    }
+    assert.ok(fields.includes('color'), 'значения вида тоже разложены по группам');
 });
 
-test('поле уходит классу, который задаёт ему значение последним', () => {
+test('поле уходит самому конкретному классу из объявивших его', () => {
     const byName = (lifer) => new Map(liferFieldGroups(lifer).map((g) => [g.name, new Set(g.fields)]));
 
     const stone = byName(new Stone(0, 0));
-    // Stone только переопределяет — если считать по появлению ключа,
-    // его вкладка осталась бы пустой
+    // Stone не заводит своих полей, а только переопределяет значения вида —
+    // считать по появлению ключа значило бы оставить его вкладку пустой
     assert.ok(stone.get('Stone').has('color'), 'свой цвет — у Stone');
     assert.ok(stone.get('Stone').has('danger'), 'своя угроза — у Stone');
     assert.ok(stone.get('Unit').has('kills'), 'счётчик убийств — у Unit');

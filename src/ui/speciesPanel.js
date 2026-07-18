@@ -1,4 +1,4 @@
-import { liferColor } from '../core/lifers.js';
+import { liferColor } from '../core/species.js';
 
 // Список типов существ: цвет, название, текущее количество.
 // Он же служит палитрой — выбранный тип подселяется кликом по канвасу.

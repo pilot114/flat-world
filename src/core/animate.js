@@ -11,6 +11,9 @@ export const Anim = {
 // Единственная задача animate — обновить координаты существа.
 // name — тип движения (Anim), vector — точка притяжения/отталкивания.
 // nears — список соседей; передаётся снаружи, чтобы не искать их дважды за тик.
+//
+// Возвращает движение, которое в итоге применилось: расталкивание соседей
+// подменяет решение, а платит существо за то, что действительно делало.
 export function animate(lifer, world, name, vector, nears = world.getNear(lifer)) {
     // физическое ограничение: нельзя сильно накладывать объекты друг на друга.
     // Список собран до decide(), поэтому съеденных в этом тике пропускаем.
@@ -25,7 +28,7 @@ export function animate(lifer, world, name, vector, nears = world.getNear(lifer)
     // В общую таблицу оно не ложится, поэтому разбирается отдельно.
     if (name === Anim.CIRCLE) {
         moveByCircle(lifer, world);
-        return;
+        return name;
     }
 
     const setImpulse = IMPULSES[name];
@@ -46,6 +49,8 @@ export function animate(lifer, world, name, vector, nears = world.getNear(lifer)
 
     lifer.x += lifer.dx;
     lifer.y += lifer.dy;
+
+    return name;
 }
 
 // Тип движения -> как задать импульс. Само перемещение общее для всех:
@@ -79,10 +84,12 @@ function moveByCircle(lifer, world) {
     lifer.y = centerY - radius * Math.sin(theta);
 }
 
+// Шаг существа задаёт pace, а не speed: обессиленное движется медленнее,
+// чем позволяет его вид.
 function setImpulseByAngle(lifer, angle) {
     const radians = angle * (Math.PI / 180);
-    lifer.dx = Math.cos(radians) * lifer.speed;
-    lifer.dy = Math.sin(radians) * lifer.speed;
+    lifer.dx = Math.cos(radians) * lifer.pace;
+    lifer.dy = Math.sin(radians) * lifer.pace;
 }
 
 // direction: 1 — движемся к точке, -1 — от неё
@@ -96,6 +103,6 @@ function setImpulseToPoint(lifer, point, direction) {
         return;
     }
 
-    lifer.dx = direction * (dx / length) * lifer.speed;
-    lifer.dy = direction * (dy / length) * lifer.speed;
+    lifer.dx = direction * (dx / length) * lifer.pace;
+    lifer.dy = direction * (dy / length) * lifer.pace;
 }

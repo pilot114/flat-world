@@ -1,5 +1,5 @@
-import { createLifer, liferColor, liferTypes } from './core/lifers.js';
-import { BERSERK_BIT, World } from './core/world.js';
+import { BERSERK_COLOR, Flag, createLifer, liferColor, liferTypes } from './core/species.js';
+import { World } from './core/world.js';
 import { drawSelection, drawSnapshot } from './render/draw.js';
 import { getEventLocation } from './utils/dom.js';
 import { SCENARIOS } from './scenarios.js';
@@ -22,6 +22,9 @@ function main() {
     const info = new InfoPanel('worldInfo', 'selectInfo', 'selectTabs');
     // цвета по индексу типа — в кадре истории тип хранится числом
     const palette = liferTypes().map(liferColor);
+    // берсерк перекрашивается на время режима, поэтому в истории цвет
+    // определяет не только вид: состояние важнее
+    const colorOf = (type, flags) => (flags & Flag.BERSERK ? BERSERK_COLOR : palette[type]);
 
     const player = new Player(
         {
@@ -51,7 +54,9 @@ function main() {
     // поэтому цикл отрисовки и обработчик кликов читают текущую сессию
     // через ссылку, а не захватывают её при старте.
     let session = null;
+    const scenarioInfo = document.getElementById('scenarioInfo');
     const tabs = new Tabs('tabs', SCENARIOS, (scenario) => {
+        scenarioInfo.textContent = scenario.description;
         session = startScenario(scenario, player);
     });
     tabs.select(SCENARIOS[0].id);
@@ -60,21 +65,36 @@ function main() {
     // без выбора — выделяем ближайшее.
     canvas.addEventListener('click', (event) => {
         const location = getEventLocation(canvas, event);
+        const { world } = session;
 
         if (session.species.selected) {
-            session.world.add(createLifer(session.species.selected, location.x, location.y));
+            world.add(createLifer(session.species.selected, location.x, location.y));
+            return;
+        }
+
+        // при перемотке на канвасе кадр из прошлого — целимся в него
+        const viewed = viewedFrame(world, player);
+        if (viewed) {
+            world.selectByFrameLocation(viewed, location);
         } else {
-            session.world.selectByLocation(location);
+            world.selectByLocation(location);
         }
     });
 
-    startLoop({ context, info, player, palette, getSession: () => session });
+    startLoop({ context, info, player, colorOf, getSession: () => session });
+}
+
+// Кадр, который сейчас на канвасе, или null в живом режиме. Его читают
+// и отрисовка, и клик: целиться нужно в то же, что показано.
+function viewedFrame(world, player) {
+    return player.position === null ? null : world.history[player.position];
 }
 
 // Собирает мир сценария вместе с его списком видов и графиком.
 function startScenario(scenario, player) {
-    // виды сценария — ключи setup: их и показываем в списке и на графике
-    const types = Object.keys(scenario.setup);
+    // виды сценария — ключи setup: их и показываем в списке и на графике.
+    // Песочница начинается пустой, поэтому перечисляет виды сама
+    const types = scenario.types ?? Object.keys(scenario.setup);
     const world = new World(WIDTH, HEIGHT);
 
     for (const [type, count] of Object.entries(scenario.setup)) {
@@ -84,6 +104,8 @@ function startScenario(scenario, player) {
         world.setSpawnRate(type, chance);
     }
     world.refreshCounts();
+
+    world.matchEnds = scenario.finish !== false;
 
     // матч закончился — останавливаем ход времени, но перемотку оставляем.
     // Модальный alert здесь не годится: он замораживает вкладку целиком.
@@ -103,7 +125,7 @@ function startScenario(scenario, player) {
     };
 }
 
-function startLoop({ context, info, player, palette, getSession }) {
+function startLoop({ context, info, player, colorOf, getSession }) {
     const step = 1000 / FPS;
     // Больше пяти шагов за кадр не догоняем: после сворачивания вкладки
     // накопленный долг иначе выльется в рывок. Порог растёт вместе со
@@ -147,9 +169,16 @@ function startLoop({ context, info, player, palette, getSession }) {
 
         context.clearRect(0, 0, world.width, world.height);
 
-        const viewed = player.position === null ? null : world.history[player.position];
+        const viewed = viewedFrame(world, player);
         if (viewed) {
-            drawSnapshot(context, viewed, palette, BERSERK_BIT);
+            drawSnapshot(context, viewed, colorOf);
+
+            // выделенное могло быть съедено после этого кадра — помечаем
+            // его всё равно, по тому, что о нём знает сам кадр
+            const marked = world.selectionInFrame(viewed);
+            if (marked) {
+                drawSelection(context, marked);
+            }
         } else {
             world.draw(context, drawSelection);
         }

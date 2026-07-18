@@ -1,4 +1,4 @@
-import { liferFieldGroups } from '../core/lifers.js';
+import { liferFieldGroups } from '../core/species.js';
 import { objectToString } from '../utils/dom.js';
 import { formatByteSize } from '../utils/memory.js';
 import { Tabs } from './tabs.js';

@@ -1,11 +1,18 @@
 import { Anim } from './animate.js';
 import { getNearest, getRange, getRangeSquared } from '../utils/math.js';
 
+// Поведение — постоянная роль вида: чем существо занято всю жизнь.
 export const Behavior = {
     TIMID: 'timid',
     HERBIVORE: 'herbivore',
     PREDATOR: 'predator',
-    COMPETE: 'compete',
+    COMPETE: 'compete'
+};
+
+// Состояние — временный режим поверх роли. Оно перебивает поведение
+// в решении, но не стирает его: боец в берсерке остаётся бойцом,
+// и матч по-прежнему считает его за свой вид.
+export const State = {
     BERSERK: 'berserk'
 };
 
@@ -15,15 +22,16 @@ const WANDER = { anim: Anim.PARTICLE, vector: null };
 // Побочные эффекты (поедание соседей) выполняются здесь же.
 // nears — список соседей; передаётся снаружи, чтобы не искать их дважды за тик.
 export function decide(lifer, world, nears = world.getNear(lifer)) {
-    const decider = DECIDERS[lifer.behavior];
+    const decider = DECIDERS[lifer.state ?? lifer.behavior];
     // поведения нет или оно незнакомое — существо просто дрейфует
     return decider ? decider(lifer, world, nears) : WANDER;
 }
 
-// Поведение -> функция решения. Все принимают (lifer, world, nears),
-// даже если не всё им нужно: единая сигнатура — цена вызова по таблице.
+// Режим -> функция решения; ключами служат и поведения, и состояния.
+// Все принимают (lifer, world, nears), даже если не всё им нужно:
+// единая сигнатура — цена вызова по таблице.
 const DECIDERS = {
-    [Behavior.BERSERK]: berserk,
+    [State.BERSERK]: berserk,
     [Behavior.COMPETE]: compete,
     [Behavior.HERBIVORE]: herbivore,
     [Behavior.PREDATOR]: predator,
@@ -38,9 +46,7 @@ function berserk(lifer, world, nears) {
     }
 
     if (isReachable(lifer, target)) {
-        world.remove(target);
-        lifer.kills += 1;
-        lifer.berserkCounter += 1;
+        lifer.eat(world, target);
     }
 
     return chase(target);
@@ -62,7 +68,7 @@ function compete(lifer, world, nears) {
     for (const object of nears) {
         const range = getRangeSquared(lifer, object);
 
-        if (object.behavior === Behavior.BERSERK && range < berserkerRange) {
+        if (object.state === State.BERSERK && range < berserkerRange) {
             berserker = object;
             berserkerRange = range;
         }
@@ -102,12 +108,10 @@ function compete(lifer, world, nears) {
 
     // съедаем цель и растём
     if (target && isReachable(lifer, target)) {
-        world.remove(target);
+        lifer.eat(world, target);
         lifer.radius += 1;
         lifer.radiusView += 1;
         lifer.speed += 0.1;
-        lifer.kills += 1;
-        lifer.berserkCounter += 1;
     }
 
     if (danger) {
@@ -122,7 +126,7 @@ function herbivore(lifer, world, nears) {
     const food = nearestOfType(lifer, nears, lifer.target);
 
     if (food && isReachable(lifer, food)) {
-        world.remove(food);
+        lifer.eat(world, food);
     }
 
     if (threat) {
@@ -139,7 +143,7 @@ function predator(lifer, world, nears) {
     }
 
     if (isReachable(lifer, prey)) {
-        world.remove(prey);
+        lifer.eat(world, prey);
     }
 
     return chase(prey);
