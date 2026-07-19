@@ -10,11 +10,53 @@
 			margin: 0;
 			padding: 1em;
 		}
-		#tabs {
+		/* Все переключатели — вкладки сценариев, вкладки правой колонки
+		   и ряд скоростей — устроены одинаково: группа радиокнопок вплотную.
+		   Выбран ровно один, соседи гаснут сами, подсветку задаёт CSS. */
+		.chips {
 			display: flex;
-			gap: 0.5em;
+		}
+		.chip input {
+			position: absolute;
+			opacity: 0;
+			pointer-events: none;
+		}
+		.chip span {
+			display: inline-block;
+			border: 1px solid #c8bfa4;
+			background-color: #f2ead6;
+			color: #555;
+			cursor: pointer;
+		}
+		/* соседние делят границу, скругление — только по краям ряда */
+		.chip + .chip span {
+			margin-left: -1px;
+		}
+		.chip:first-child span {
+			border-radius: 3px 0 0 3px;
+		}
+		.chip:last-child span {
+			border-radius: 0 3px 3px 0;
+		}
+		.chip input:checked + span {
+			background-color: #555;
+			border-color: #555;
+			color: cornsilk;
+			/* выбранная перекрывает соседей, иначе её тёмная рамка
+			   уходит под светлую соседнюю */
+			position: relative;
+		}
+		#tabs {
 			width: 1000px;
 			padding-bottom: 0.75em;
+		}
+		#tabs .chip span {
+			padding: 6px 14px;
+			font-size: 13px;
+		}
+		#sideTabs .chip span {
+			padding: 4px 10px;
+			font-size: 12px;
 		}
 		/* высота фиксирована под три строки: описания разной длины иначе
 		   двигали бы канвас при переключении вкладок */
@@ -27,58 +69,67 @@
 			color: #555;
 			padding-bottom: 1em;
 		}
-		.tab {
-			font: inherit;
-			font-size: 13px;
-			padding: 6px 14px;
-			border: 1px solid #c8bfa4;
-			border-radius: 4px;
-			background-color: #f2ead6;
-			color: #555;
-			cursor: pointer;
-		}
-		.tab.active {
-			background-color: #555;
-			border-color: #555;
-			color: cornsilk;
-		}
-		/* высота колонок зафиксирована, чтобы растущий текст не двигал канвас */
-		#container {
+		/* Панели живут во второй колонке и стоят друг под другом: канвасу
+		   нужна вся ширина, а им — общая вертикаль рядом с ним. */
+		#side {
 			display: flex;
-			align-items: flex-start;
-			gap: 1em;
-			height: 240px;
-			padding-bottom: 1em;
+			flex-direction: column;
+			gap: 0.75em;
+			flex: 0 0 400px;
 		}
-		#worldInfo, #selectPanel {
-			width: 220px;
-			height: 100%;
+		#statsPanel, #statePanel {
+			display: flex;
+			flex-direction: column;
+			gap: 0.75em;
+		}
+		/* Показана одна вкладка из двух — переключает полоска сверху.
+		   Селектор с id, а не просто .hidden: правило выше тоже по id,
+		   и класс сам по себе его не перебивает — обе вкладки оставались
+		   видимыми, хотя класс навешивался правильно. */
+		#statsPanel.hidden, #statePanel.hidden {
+			display: none;
 		}
 		#worldInfo {
+			max-height: 9em;
 			overflow-y: auto;
 		}
 		#selectPanel {
 			display: flex;
 			flex-direction: column;
 			gap: 0.5em;
-			min-height: 0;
 		}
 		#selectInfo {
-			overflow-y: auto;
+			max-height: 14em;
+			overflow: auto;
 		}
-		/* вкладок классов бывает до четырёх, и они делят колонку в 220px —
-		   поэтому они мельче вкладок сценариев и переносятся по строкам */
-		#selectTabs {
-			display: flex;
-			flex-wrap: wrap;
-			gap: 4px;
-		}
-		#selectTabs .tab {
-			padding: 2px 6px;
+		/* Поля выделенного — таблицей: колонки классы, строки поля.
+		   Так видно, что и где переопределено, без щелчков по вкладкам. */
+		.fields {
+			border-collapse: collapse;
 			font-size: 11px;
+			font-variant-numeric: tabular-nums;
 		}
+		.fields th, .fields td {
+			border: 1px solid #ded3b4;
+			padding: 1px 5px;
+			text-align: right;
+			white-space: nowrap;
+		}
+		.fields th {
+			font-weight: normal;
+			text-align: left;
+			color: #555;
+		}
+		/* класс не объявлял это поле — значение пришло сверху по цепочке */
+		.fields td.inherited {
+			background-color: #e3d9bd;
+		}
+		/* В колонке flex-basis задаёт высоту, а не ширину: правило от прежней
+		   горизонтальной раскладки растягивало SVG до 400px при своих 200
+		   и оставляло полсотни процентов пустоты снизу. */
 		#graph {
-			flex: 0 0 400px;
+			flex: 0 0 auto;
+			width: 400px;
 		}
 		/* цвет линии задаётся атрибутом stroke по виду существа —
 		   правило CSS перебило бы его, поэтому цвета здесь нет */
@@ -102,7 +153,6 @@
 			display: block;
 		}
 		#species {
-			width: 130px;
 			font-size: 13px;
 		}
 		/* цвет, название, количество — легенда и палитра одновременно */
@@ -128,74 +178,127 @@
 		.species-count {
 			font-variant-numeric: tabular-nums;
 		}
+		/* Перемотка и скорость — одна строка под канвасом: обе про ход
+		   времени, и разносить их по этажам незачем. Ползунок забирает то,
+		   что осталось от ряда скоростей и подписи. */
 		#controls {
 			display: flex;
 			align-items: center;
 			gap: 1em;
 			width: 1000px;
-			padding-bottom: 0.5em;
+			padding-bottom: 0.75em;
 		}
-		#playPause {
-			flex: 0 0 auto;
-			font: inherit;
-			font-size: 13px;
-			padding: 4px 10px;
-			cursor: pointer;
+		#app {
+			flex: 0 0 1000px;
 		}
 		#timeline {
 			flex: 1;
+			/* ползунок не должен схлопнуться до неюзабельного огрызка */
+			min-width: 180px;
 		}
 		#playerLabel {
-			flex: 0 0 190px;
+			flex: 0 0 175px;
 			font-size: 12px;
 			color: #555;
 		}
+		/* Скорость выбирается из ряда, а не тянется ползунком: значений
+		   немного, они неравномерны, и видеть их все сразу полезнее, чем
+		   угадывать положение движка. Ноль в этом ряду и есть пауза —
+		   отдельная кнопка означала бы два способа остановить время. */
 		#speedControl {
 			display: flex;
 			align-items: center;
 			gap: 0.5em;
 			flex: 0 0 auto;
-			font-size: 12px;
-			color: #555;
 		}
 		#speed {
-			width: 90px;
+			display: flex;
 		}
-		/* ширина под «×0.25», чтобы соседи не дёргались при смене множителя */
-		#speedLabel {
-			width: 3em;
+		#speed .chip span {
+			padding: 3px 8px;
 			font-variant-numeric: tabular-nums;
+		}
+		/* ноль — это пауза, и её стоит отличать от прочих множителей */
+		.chip.stop input:checked + span {
+			background-color: #8b3a3a;
+			border-color: #8b3a3a;
 		}
 		pre {
 			font-size: 12px;
 			margin: 0;
 			white-space: pre-wrap;
 		}
+		/* Вкладка «состояние» — то, что лежит в истории: расход памяти
+		   и обозреватель слепков. Смотреть в неё приходится вместе
+		   с картинкой, поэтому она в колонке рядом с канвасом, а не внизу. */
+		#layout {
+			display: flex;
+			align-items: flex-start;
+			gap: 1em;
+		}
+		#memoryInfo {
+			color: #555;
+		}
+		#stateControls {
+			display: flex;
+			flex-direction: column;
+			gap: 0.25em;
+			font-size: 12px;
+			color: #555;
+			padding-bottom: 0.75em;
+		}
+		#stateControls input[type=range] {
+			width: 100%;
+		}
+		#stateFrameLabel, #stateIdLabel {
+			font-variant-numeric: tabular-nums;
+			padding-bottom: 0.5em;
+		}
+
 	</style>
 </head>
 <body>
-	<div id="tabs"></div>
-	<p id="scenarioInfo"></p>
-	<div id="container">
-		<pre id="worldInfo"></pre>
-		<svg id="graph" width="400" height="200"></svg>
-		<div id="species"></div>
-		<div id="selectPanel">
-			<div id="selectTabs"></div>
-			<pre id="selectInfo"></pre>
+<div id="layout">
+	<div id="app">
+		<div id="tabs"></div>
+		<p id="scenarioInfo"></p>
+		<div id="controls">
+			<input type="range" id="timeline" min="0" max="0" value="0" disabled>
+			<span id="playerLabel"></span>
+			<div id="speedControl">
+				<span>скорость</span>
+				<div id="speed"></div>
+			</div>
+		</div>
+		<canvas id="canvas"></canvas>
+	</div>
+
+	<div id="side">
+		<div id="sideTabs"></div>
+
+		<div id="statsPanel">
+			<pre id="worldInfo"></pre>
+			<svg id="graph" width="400" height="200"></svg>
+			<div id="species"></div>
+			<div id="selectPanel">
+				<div id="selectInfo"></div>
+			</div>
+		</div>
+
+		<div id="statePanel">
+			<pre id="memoryInfo"></pre>
+			<div id="stateControls">
+				<label for="stateFrame">ключевой кадр</label>
+				<input type="range" id="stateFrame" min="0" max="0" value="0">
+				<span id="stateFrameLabel"></span>
+				<label for="stateId">id существа</label>
+				<input type="range" id="stateId" min="1" max="1" value="1">
+				<span id="stateIdLabel"></span>
+			</div>
+			<pre id="stateInfo"></pre>
 		</div>
 	</div>
-	<div id="controls">
-		<button id="playPause" type="button">⏸ Пауза</button>
-		<input type="range" id="timeline" min="0" max="0" value="0" disabled>
-		<span id="playerLabel"></span>
-		<span id="speedControl">
-			<label for="speed">скорость</label>
-			<input type="range" id="speed">
-			<span id="speedLabel"></span>
-		</span>
-	</div>
-	<canvas id="canvas"></canvas>
+</div>
 
 	<script type="module" src="./src/main.js"></script>
 </body>

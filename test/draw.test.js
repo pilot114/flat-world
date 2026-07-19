@@ -21,88 +21,87 @@ function stubContext() {
     };
 }
 
-// Одинокий боец закончил бы матч на нулевом тике, и кадр не успел бы
+// Одинокий боец закончил бы матч на нулевом тике, и история не успела бы
 // записаться — здесь речь не о матче, поэтому его победу не разыгрываем.
-function sandboxWorld() {
-    const world = new World(500, 500);
+function sandboxWorld(seed = 1) {
+    const world = new World(500, 500, seed);
     world.matchEnds = false;
     return world;
 }
 
-test('пометка кадра рисуется по его координатам, а не по живым', () => {
+test('пометка при перемотке рисуется по состоянию того момента', () => {
     const world = sandboxWorld();
     const lifer = world.add(new Stone(100, 100));
-    world.update(0);
 
-    const frame = world.history[0];
-    const shown = { x: frame.xs[0], y: frame.ys[0] };
+    for (let tick = 0; tick < 40; tick++) {
+        world.update(tick * 16);
+    }
 
-    // существо уехало после записи кадра
-    lifer.x = 400;
-    lifer.y = 400;
     world.select = lifer;
+    const past = world.selectionAt(10);
 
     const context = stubContext();
-    drawSelection(context, world.selectionInFrame(frame));
+    drawSelection(context, past);
 
-    assert.deepEqual(context.arcs, [{ ...shown, radius: lifer.radiusView }]);
-    assert.notEqual(shown.x, Math.round(lifer.x), 'живые координаты уже другие');
+    assert.deepEqual(context.arcs, [{ x: past.x, y: past.y, radius: past.radiusView }]);
     assert.equal(context.texts[0].text, 'id:' + lifer.id);
+
+    // существо с тех пор уехало — пометка не должна следовать за ним
+    assert.notEqual(past.x, lifer.x, 'координаты того момента, а не нынешние');
 });
 
-test('съеденное существо всё равно помечается в кадре, где оно живо', () => {
+test('съеденное существо помечается в том моменте, где оно живо', () => {
     const world = sandboxWorld();
     const doomed = world.add(new Stone(100, 100));
-    world.update(0);
 
-    const frame = world.history[0];
+    for (let tick = 0; tick < 20; tick++) {
+        world.update(tick * 16);
+    }
+
     world.select = doomed;
     world.remove(doomed);
 
-    // живого объекта больше нет — радиус обзора берётся видовой
-    const marked = world.selectionInFrame(frame);
-
     assert.equal(world.select, null, 'в живом мире выделять нечего');
-    assert.deepEqual(marked, {
-        id: doomed.id,
-        x: frame.xs[0],
-        y: frame.ys[0],
-        radiusView: Stone.prototype.radiusView
-    });
+
+    const past = world.selectionAt(10);
+    assert.equal(past.id, doomed.id, 'а в прошлом оно ещё живо');
 
     const context = stubContext();
-    drawSelection(context, marked);
+    drawSelection(context, past);
     assert.equal(context.arcs.length, 1, 'круг обзора рисуется и для съеденного');
 });
 
-test('в кадре, где существа ещё не было, помечать нечего', () => {
-    const world = new World(500, 500);
+test('в моменте, где существа ещё не было, помечать нечего', () => {
+    const world = sandboxWorld();
     world.add(new Grass(10, 10));
-    world.update(0);
 
-    // подселён после записи кадра
-    const late = world.add(new Stone(200, 200));
+    for (let tick = 0; tick < 40; tick++) {
+        world.update(tick * 16);
+    }
+
+    // подселён позже показанного момента
+    const late = world.place('Stone', 200, 200);
     world.select = late;
 
-    assert.equal(world.selectionInFrame(world.history[0]), null);
+    assert.equal(world.selectionAt(10), null);
 });
 
 test('без выделения пометки нет', () => {
-    const world = new World(500, 500);
+    const world = sandboxWorld();
     world.add(new Grass(10, 10));
     world.update(0);
 
-    assert.equal(world.selectionInFrame(world.history[0]), null);
+    assert.equal(world.selectionAt(0), null);
 });
 
 test('у существа без обзора рисуется только подпись', () => {
-    const world = new World(500, 500);
+    const world = sandboxWorld();
     const grass = world.add(new Grass(50, 60));
     world.update(0);
     world.select = grass;
 
     const context = stubContext();
-    drawSelection(context, world.selectionInFrame(world.history[0]));
+    drawSelection(context, world.selectionAt(0));
 
     // трава ничего не видит — круга у неё нет ни в живом мире, ни в истории
     assert.deepEqual(context.arcs, []);

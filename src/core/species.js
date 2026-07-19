@@ -29,6 +29,16 @@ const EXHAUSTED_PACE = 0.5;
 // Добыча возвращает силы соразмерно своему размеру.
 const FOOD_VALUE = 20;
 
+// Сколько единиц сырья уходит на один товар.
+const PARTS = 3;
+
+// Пустой список соседей для тиков, в которые существо не принимает решений.
+const NOBODY = [];
+
+// Как далеко от родителя появляется потомок — в его же радиусах.
+// Вплотную его тут же оттолкнуло бы расталкивание соседей.
+const BREED_AWAY = 2;
+
 // Признаки состояния в кадре истории. Кадр хранит их отдельным байтом,
 // а не старшим битом типа: вид и состояние — разные вещи, и упаковка
 // их в одно число упирала бы модель в 127 видов.
@@ -66,25 +76,34 @@ export class Base {
         this.state = null;
     }
 
-    draw(context) {
-        drawCircle(context, this, this.color);
+    // part — доля пути до следующего тика: на медленной скорости кадров
+    // отрисовки больше, чем тиков, и без этого движение выглядело бы рваным.
+    draw(context, part) {
+        drawCircle(context, this, this.color, part);
     }
 
-    update(world) {
-        this.age(world);
-    }
-
-    // Одна единица времени жизни; на нуле существо исчезает.
-    age(world) {
-        if (--this.ttl <= 0) {
-            world.remove(this);
-        }
-    }
+    // Неподвижное существо за тик не делает ничего: оно просто есть, пока
+    // его не съедят. Возраст появляется у Creature — вместе с движением,
+    // за которое надо платить. Трава от старости не гибнет ни в одном
+    // сценарии: её всегда съедают раньше.
+    update() {}
 
     // Съесть соседа. Само поедание одинаково для всех, а счётчики заводят
     // те, кому они нужны — поведению незачем знать про поля конкретных видов.
     eat(world, victim) {
         world.remove(victim);
+    }
+
+    // Отдать носильщику единицу груза. Ресурс на этом кончается —
+    // у постройки вместо этого убывает запас.
+    give(world) {
+        world.remove(this);
+        return true;
+    }
+
+    // Есть ли что отдавать. Ресурс лежит целиком, поэтому да.
+    canGive() {
+        return true;
     }
 
     // Признаки состояния для кадра истории: у обычного существа их нет.
@@ -98,7 +117,6 @@ defineSpecies(Base, {
     behavior: null,
     radius: 8,
     radiusView: 0,
-    ttl: MINUTE * 10,
     color: 'black'
 });
 
@@ -110,16 +128,74 @@ export class Creature extends Base {
         super(x, y);
         // запас сил; вид задаёт и стартовое значение, и потолок
         this.energy = this.energyMax;
+        // съедено с последнего потомка
+        this.fed = 0;
     }
 
     update(world) {
-        // соседей ищем один раз за тик и переиспользуем в решении и в движении
-        const nears = world.getNear(this);
-        const { anim, vector } = decide(this, world, nears);
-        // платим за движение, которое действительно случилось, а не за
-        // задуманное: расталкивание соседей могло подменить решение
-        this.spend(animate(this, world, anim, vector, nears));
+        if (this.thinks(world)) {
+            // соседей ищем один раз за тик и переиспользуем в решении и в движении
+            const nears = world.getNear(this);
+            const { anim, vector } = decide(this, world, nears);
+            // платим за движение, которое действительно случилось, а не за
+            // задуманное: расталкивание соседей могло подменить решение,
+            // — и сразу за весь промежуток до следующего решения
+            this.spend(animate(this, world, anim, vector, nears), this.reaction);
+        } else {
+            // между решениями существо летит по прежнему импульсу
+            animate(this, world, Anim.PARTICLE, null, NOBODY);
+        }
+
+        this.breed(world);
         this.age(world);
+    }
+
+    // Одна единица времени жизни; на нуле существо исчезает.
+    age(world) {
+        if (--this.ttl <= 0) {
+            world.remove(this);
+        }
+    }
+
+    // Пора ли пересматривать решение.
+    //
+    // Каждый тик его пересматривать нельзя: оказавшись между двумя почти
+    // равными раздражителями — двумя травинками или двумя волками, — существо
+    // переключается между ними шестьдесят раз в секунду и дрожит на месте.
+    //
+    // Момент решения разнесён по id: если бы весь мир думал в один тик,
+    // картинка пульсировала бы целиком, а нагрузка собиралась в пики.
+    thinks(world) {
+        return (world.tick + this.id) % this.reaction === 0;
+    }
+
+    // Сытое существо приносит потомка.
+    //
+    // Считаем съеденное, а не запас сил: запас растёт и на отдыхе, и тогда
+    // размножаться можно было бы, просто стоя на месте. Съеденное же берётся
+    // только у того, кого удалось поймать, — популяция упирается в еду,
+    // ради чего сценарий с размножением и нужен.
+    //
+    // Запас при этом делится пополам: потомок обходится родителю ровно
+    // в то, что достаётся ему самому.
+    breed(world) {
+        if (!world.breeding || !this.breedAfter || this.fed < this.breedAfter) {
+            return;
+        }
+
+        this.fed = 0;
+        this.energy /= 2;
+
+        const angle = world.random.int(0, 359) * (Math.PI / 180);
+        const away = this.radius * BREED_AWAY;
+        const child = createLifer(
+            this.type,
+            clamp(this.x + Math.cos(angle) * away, 1, world.width - 1),
+            clamp(this.y + Math.sin(angle) * away, 1, world.height - 1)
+        );
+
+        child.energy = this.energy;
+        world.add(child);
     }
 
     // Скорость с оглядкой на силы: вид задаёт предел, энергия — доступное.
@@ -127,11 +203,13 @@ export class Creature extends Base {
         return this.energy > 0 ? this.speed : this.speed * EXHAUSTED_PACE;
     }
 
-    // Расход и восстановление за один тик.
-    spend(anim) {
+    // Расход и восстановление. ticks — за сколько тиков сразу: между
+    // решениями существо ничего не решает, и платить там не за что,
+    // поэтому весь промежуток оплачивается в момент решения.
+    spend(anim, ticks = 1) {
         const change = EFFORT.has(anim)
-            ? -this.speed * this.radius * EFFORT_RATE
-            : REST_GAIN;
+            ? -this.speed * this.radius * EFFORT_RATE * ticks
+            : REST_GAIN * ticks;
 
         this.gainEnergy(change);
     }
@@ -139,6 +217,7 @@ export class Creature extends Base {
     eat(world, victim) {
         super.eat(world, victim);
         this.gainEnergy(victim.radius * FOOD_VALUE);
+        this.fed += 1;
     }
 
     // Запас не уходит в минус и не копится выше предела вида: иначе
@@ -151,7 +230,12 @@ export class Creature extends Base {
 defineSpecies(Creature, {
     radiusView: 100,
     speed: 1,
+    ttl: MINUTE * 10,
     energyMax: 300,
+    // раз во сколько тиков существо пересматривает решение
+    reaction: 4,
+    // сколько добычи нужно на одного потомка; ноль — вид не размножается
+    breedAfter: 0,
 
     // виды-ориентиры поведения: кого едим и от кого убегаем
     danger: null,
@@ -161,14 +245,12 @@ defineSpecies(Creature, {
 export class Grass extends Base {}
 
 defineSpecies(Grass, {
-    type: 'Grass',
     color: 'green'
 });
 
 export class Ghost extends Creature {}
 
 defineSpecies(Ghost, {
-    type: 'Ghost',
     behavior: Behavior.TIMID,
     radius: 10,
     speed: 0.5,
@@ -178,24 +260,26 @@ defineSpecies(Ghost, {
 export class Cow extends Creature {}
 
 defineSpecies(Cow, {
-    type: 'Cow',
     behavior: Behavior.HERBIVORE,
     radius: 10,
     ttl: MINUTE * 2,
     color: 'peru',
     danger: 'Wolf',
-    target: 'Grass'
+    target: 'Grass',
+    // пять травинок на телёнка; подобрано замером — при меньшем стадо
+    // взлетает и выедает луг, при большем не поспевает за волками
+    breedAfter: 5
 });
 
 export class Wolf extends Creature {}
 
 defineSpecies(Wolf, {
-    type: 'Wolf',
     behavior: Behavior.PREDATOR,
     ttl: MINUTE,
     speed: 1.2,
     color: 'gray',
-    target: 'Cow'
+    target: 'Cow',
+    breedAfter: 6
 });
 
 // Ловец призраков: быстрее добычи лишь на пять сотых, поэтому берёт её
@@ -203,7 +287,6 @@ defineSpecies(Wolf, {
 export class Human extends Creature {}
 
 defineSpecies(Human, {
-    type: 'Human',
     behavior: Behavior.PREDATOR,
     radius: 10,
     ttl: MINUTE * 3,
@@ -269,7 +352,6 @@ defineSpecies(Unit, {
 export class Stone extends Unit {}
 
 defineSpecies(Stone, {
-    type: 'Stone',
     color: 'orange',
     danger: 'Paper',
     target: 'Clip'
@@ -278,7 +360,6 @@ defineSpecies(Stone, {
 export class Clip extends Unit {}
 
 defineSpecies(Clip, {
-    type: 'Clip',
     color: 'red',
     danger: 'Stone',
     target: 'Paper'
@@ -287,24 +368,170 @@ defineSpecies(Clip, {
 export class Paper extends Unit {}
 
 defineSpecies(Paper, {
-    type: 'Paper',
     color: 'blue',
     danger: 'Clip',
     target: 'Stone'
 });
 
-// Реестр доступных моделей: тип -> класс.
-export const LIFERS = { Grass, Ghost, Human, Cow, Wolf, Stone, Clip, Paper };
+// --- Хозяйство: ресурсы, постройки и носильщики между ними ---
 
-// Связи видов заданы именами, и опечатка в danger или target не сломала бы
-// ничего заметно — цель просто никогда бы не находилась. Сверяем имена
-// с реестром один раз при загрузке модуля.
+// Постройка: не двигается, копит запас и отдаёт его носильщикам.
+// stock — что принято, goods — что готово к вывозу; складу хватает первого,
+// заводу нужны оба, рынку — только второе.
+export class Place extends Base {
+    constructor(x, y) {
+        super(x, y);
+        this.stock = 0;
+        this.goods = 0;
+    }
+
+    receive() {
+        this.stock += 1;
+    }
+
+    give() {
+        if (this.stock <= 0) {
+            return false;
+        }
+        this.stock -= 1;
+        return true;
+    }
+
+    canGive() {
+        return this.stock > 0;
+    }
+}
+
+defineSpecies(Place, {
+    radius: 16,
+    color: 'tan'
+});
+
+export class Tree extends Base {}
+
+defineSpecies(Tree, { color: 'darkgreen', radius: 7 });
+
+export class Ore extends Base {}
+
+defineSpecies(Ore, { color: 'dimgray', radius: 7 });
+
+// Склад принимает сырьё и отдаёт его дальше — тем же запасом.
+export class Store extends Place {}
+
+defineSpecies(Store, { color: 'saddlebrown' });
+
+// Завод копит сырьё и переводит его в товар: PARTS единиц на один товар.
+export class Plant extends Place {
+    update() {
+        if (this.stock >= PARTS) {
+            this.stock -= PARTS;
+            this.goods += 1;
+        }
+    }
+
+    give() {
+        if (this.goods <= 0) {
+            return false;
+        }
+        this.goods -= 1;
+        return true;
+    }
+
+    canGive() {
+        return this.goods > 0;
+    }
+}
+
+defineSpecies(Plant, { color: 'steelblue', radius: 18 });
+
+// Рынок только принимает: проданный товар обратно не забирают.
+export class Market extends Place {
+    receive() {
+        this.goods += 1;
+    }
+
+    canGive() {
+        return false;
+    }
+}
+
+defineSpecies(Market, { color: 'goldenrod', radius: 18 });
+
+// Носильщик: пустой идёт к target, гружёный — к dropAt.
+export class Carrier extends Creature {
+    constructor(x, y) {
+        super(x, y);
+        // 0 или 1: носят по одной единице, чтобы ходьба была видна
+        this.load = 0;
+    }
+}
+
+defineSpecies(Carrier, {
+    behavior: Behavior.CARRY,
+    radius: 8,
+    speed: 1,
+    // хозяйство живёт дольше луга: работники должны пережить цепочку,
+    // а не вымереть на полпути
+    ttl: MINUTE * 15,
+    color: 'olive',
+    // куда сдавать груз; откуда брать — в target
+    dropAt: null
+});
+
+export class Logger extends Carrier {}
+
+defineSpecies(Logger, { color: 'olive', target: 'Tree', dropAt: 'Store' });
+
+export class Miner extends Carrier {}
+
+defineSpecies(Miner, { color: 'slategray', target: 'Ore', dropAt: 'Store' });
+
+export class Carter extends Carrier {}
+
+defineSpecies(Carter, { color: 'chocolate', speed: 1.3, target: 'Store', dropAt: 'Plant' });
+
+export class Trader extends Carrier {}
+
+defineSpecies(Trader, { color: 'darkviolet', speed: 1.5, target: 'Plant', dropAt: 'Market' });
+
+// Реестр доступных моделей: тип -> класс.
+export const LIFERS = {
+    Grass, Ghost, Human, Cow, Wolf, Stone, Clip, Paper,
+    Tree, Ore, Store, Plant, Market, Logger, Miner, Carter, Trader
+};
+
+// Имя вида берётся из ключа реестра, а не пишется в описании отдельной
+// строкой. Оно и так есть дважды — в имени класса и в ключе, — и третий
+// экземпляр рано или поздно разошёлся бы с ними. Причём разошёлся бы тихо:
+// опечатка не мешает createLifer (тот идёт по реестру), но typeIndex
+// не находит такого вида и отдаёт ноль — камень стал бы в истории травой.
+//
+// Из ключа, а не из Model.name: ключ — это имя свойства, его не переименует
+// ни один минификатор, а имя класса переименует.
 for (const [name, Model] of Object.entries(LIFERS)) {
-    for (const field of ['danger', 'target']) {
+    Model.prototype.type = name;
+    // в таблицу полей вид попадает наравне с остальным, что он объявляет
+    SPECIES_FIELDS.get(Model).unshift('type');
+}
+
+// Срок жизни хранится в слепке истории двумя байтами, и вид, переживший этот
+// предел, восстанавливался бы с обрезанным ttl — молча и не сразу заметно.
+// Ровно это и случилось, когда работникам хозяйства выдали полчаса жизни.
+const TTL_LIMIT = 65535;
+
+// Связи видов заданы именами, и опечатка в danger, target или dropAt
+// не сломала бы ничего заметно — цель просто никогда бы не находилась.
+// Сверяем имена с реестром один раз при загрузке модуля.
+for (const [name, Model] of Object.entries(LIFERS)) {
+    for (const field of ['danger', 'target', 'dropAt']) {
         const type = Model.prototype[field];
         if (type && !(type in LIFERS)) {
             throw new Error(`${name}.${field}: неизвестный вид ${type}`);
         }
+    }
+
+    if (Model.prototype.ttl > TTL_LIMIT) {
+        throw new Error(`${name}.ttl: ${Model.prototype.ttl} не влезает в слепок истории`);
     }
 }
 
@@ -343,12 +570,6 @@ export function liferColor(type) {
     return liferModel(type).prototype.color;
 }
 
-// Радиус обзора вида. Нужен, чтобы пометить существо в кадре истории, когда
-// живого объекта уже нет: в кадре радиуса обзора не хранится.
-export function liferViewRadius(type) {
-    return liferModel(type).prototype.radiusView;
-}
-
 // Поля существа, разложенные по классам иерархии: [{name, fields}]
 // от базового класса к самому конкретному.
 //
@@ -359,27 +580,62 @@ export function liferViewRadius(type) {
 //
 // Поле, объявленное дважды (Base задаёт color, Stone его переопределяет),
 // достаётся самому конкретному из объявивших: именно он делает вид собой.
-const FIELD_GROUPS = new Map();
+const FIELD_TABLE = new Map();
 
-export function liferFieldGroups(lifer) {
+// Поля существа таблицей: колонки — классы иерархии, строки — поля.
+//
+// В каждой строке отмечено, какие классы это поле объявляют. Класс, объявивший
+// последним, показывает нынешнее значение особи; объявившие раньше —
+// то, что задавали сами, и по ним видно, что именно переопределено.
+//
+// Ячейка — либо null (класс поле не объявлял, оно унаследовано), либо {value}.
+// Обёртка нужна, потому что само значение тоже бывает null: у id до попадания
+// в мир, у behavior неподвижного вида, у danger и target — и пустая ячейка
+// стала бы неотличима от унаследованной.
+export function liferFieldTable(lifer) {
     const Model = lifer.constructor;
 
-    if (!FIELD_GROUPS.has(Model)) {
-        FIELD_GROUPS.set(Model, buildFieldGroups(Model));
+    if (!FIELD_TABLE.has(Model)) {
+        FIELD_TABLE.set(Model, buildFieldTable(Model));
     }
-    return FIELD_GROUPS.get(Model);
+
+    const table = FIELD_TABLE.get(Model);
+
+    return {
+        classes: table.classes,
+        rows: table.rows.map((row) => ({
+            field: row.field,
+            cells: table.chain.map((Class, index) => {
+                if (!row.declaredBy.includes(index)) {
+                    return null;
+                }
+                // у последнего объявившего — то, что у особи сейчас:
+                // она могла отойти от вида, отрастив радиус или почернев
+                return {
+                    value: index === row.owner ? lifer[row.field] : Class.prototype[row.field]
+                };
+            })
+        }))
+    };
 }
 
-function buildFieldGroups(Model) {
+function buildFieldTable(Model) {
     const chain = classChain(Model);
     // конструкторы всех моделей принимают (x, y); образец нужен, чтобы
     // увидеть поля экземпляра — на прототипе их нет
     const probes = chain.map((Class) => new Class(0, 0));
-    const owners = new Map();
+    const declared = new Map();
+
+    const declare = (field, index) => {
+        if (!declared.has(field)) {
+            declared.set(field, []);
+        }
+        declared.get(field).push(index);
+    };
 
     chain.forEach((Class, index) => {
         for (const field of SPECIES_FIELDS.get(Class) ?? []) {
-            owners.set(field, index);
+            declare(field, index);
         }
 
         // конструктор дописывает собственные поля поверх родительских:
@@ -387,17 +643,24 @@ function buildFieldGroups(Model) {
         const parent = probes[index - 1];
         for (const field of Object.keys(probes[index])) {
             if (!parent || !(field in parent)) {
-                owners.set(field, index);
+                declare(field, index);
             }
         }
     });
 
-    const groups = chain.map((Class) => ({ name: Class.name, fields: [] }));
-    for (const [field, index] of owners) {
-        groups[index].fields.push(field);
-    }
+    return {
+        chain,
+        classes: chain.map((Class) => Class.name),
+        rows: [...declared].map(([field, declaredBy]) => ({
+            field,
+            declaredBy,
+            owner: declaredBy[declaredBy.length - 1]
+        }))
+    };
+}
 
-    return groups;
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
 }
 
 // Цепочка наследования от базового класса к переданному.

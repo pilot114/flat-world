@@ -1,4 +1,4 @@
-// Геометрия и случайные числа. Модуль не зависит от DOM.
+// Геометрия. Модуль не зависит от DOM.
 
 export function getRange(one, two) {
     return Math.sqrt(getRangeSquared(one, two));
@@ -32,22 +32,5 @@ export function getNearest(arr, obj, predicate) {
     return nearest;
 }
 
-// randInt(1, 10) -> число из диапазона
-export function randInt(min, max) {
-    return Math.floor(min + Math.random() * (max + 1 - min));
-}
-
-// randOf(['a', 'b']) -> случайный элемент
-export function randOf(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
-}
-
-// Генератор случайных координат внутри прямоугольника мира.
-export function randCoordGenerate(maxWidth, maxHeight) {
-    return function () {
-        return [
-            Math.floor(Math.random() * maxWidth) + 1,
-            Math.floor(Math.random() * maxHeight) + 1
-        ];
-    };
-}
+// Случайность живёт в utils/random.js и принадлежит миру: симуляция должна
+// воспроизводиться, а глобальный Math.random повторить нельзя.

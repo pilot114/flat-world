@@ -1,5 +1,5 @@
 import { BERSERK_COLOR, Flag, createLifer, liferColor, liferTypes } from './core/species.js';
-import { World } from './core/world.js';
+import { HISTORY_EVERY, World } from './core/world.js';
 import { drawSelection, drawSnapshot } from './render/draw.js';
 import { getEventLocation } from './utils/dom.js';
 import { SCENARIOS } from './scenarios.js';
@@ -7,6 +7,7 @@ import { Graph } from './ui/graph.js';
 import { InfoPanel } from './ui/infoPanel.js';
 import { Player } from './ui/player.js';
 import { SpeciesPanel } from './ui/speciesPanel.js';
+import { StatePanel } from './ui/statePanel.js';
 import { Tabs } from './ui/tabs.js';
 
 const WIDTH = 1000;
@@ -19,7 +20,17 @@ function main() {
     canvas.height = HEIGHT;
     const context = canvas.getContext('2d');
 
-    const info = new InfoPanel('worldInfo', 'selectInfo', 'selectTabs');
+    const info = new InfoPanel({ worldId: 'worldInfo', selectId: 'selectInfo' });
+
+    const state = new StatePanel({
+        panelId: 'statePanel',
+        memoryId: 'memoryInfo',
+        frameId: 'stateFrame',
+        frameLabelId: 'stateFrameLabel',
+        idId: 'stateId',
+        idLabelId: 'stateIdLabel',
+        infoId: 'stateInfo'
+    });
     // цвета по индексу типа — в кадре истории тип хранится числом
     const palette = liferTypes().map(liferColor);
     // берсерк перекрашивается на время режима, поэтому в истории цвет
@@ -27,28 +38,28 @@ function main() {
     const colorOf = (type, flags) => (flags & Flag.BERSERK ? BERSERK_COLOR : palette[type]);
 
     const player = new Player(
+        { sliderId: 'timeline', labelId: 'playerLabel', speedId: 'speed' },
         {
-            buttonId: 'playPause',
-            sliderId: 'timeline',
-            labelId: 'playerLabel',
-            speedId: 'speed',
-            speedLabelId: 'speedLabel'
-        },
-        {
-            onToggle: () => {
-                const paused = !player.paused;
-                player.setPaused(paused);
-                // снятие паузы всегда возвращает к живому миру
-                if (!paused) {
-                    player.setPosition(null);
-                }
-            },
+            // бросок ползунка останавливает время: иначе показанный кадр
+            // тут же убежал бы из-под руки
             onSeek: (position) => {
-                player.setPaused(true);
+                player.stop();
                 player.setPosition(position);
             }
         }
     );
+
+    // Правая колонка: статистика по ходу симуляции или то, что лежит
+    // в истории. Обе смотрят на один мир, поэтому переключаются показом,
+    // а не пересборкой.
+    const stats = document.getElementById('statsPanel');
+    new Tabs('sideTabs', [
+        { id: 'stats', name: 'статистика' },
+        { id: 'state', name: 'состояние' }
+    ], (item) => {
+        stats.classList.toggle('hidden', item.id !== 'stats');
+        state.setOpen(item.id === 'state');
+    }).select('stats');
 
     // Смена вкладки пересобирает мир, список видов и график целиком,
     // поэтому цикл отрисовки и обработчик кликов читают текущую сессию
@@ -68,26 +79,43 @@ function main() {
         const { world } = session;
 
         if (session.species.selected) {
-            world.add(createLifer(session.species.selected, location.x, location.y));
+            // через place, а не add: подселение — вмешательство извне,
+            // и без записи в журнал прогон истории его не повторит
+            world.place(session.species.selected, location.x, location.y);
             return;
         }
 
-        // при перемотке на канвасе кадр из прошлого — целимся в него
-        const viewed = viewedFrame(world, player);
-        if (viewed) {
-            world.selectByFrameLocation(viewed, location);
+        // при перемотке на канвасе прошлое — целимся в тех, кто был жив тогда
+        if (player.position !== null) {
+            world.selectByLocationAt(viewedTick(world, player), location);
         } else {
             world.selectByLocation(location);
         }
+
+        // дебаг смотрит на то же существо, что и панель выделения
+        state.follow(world.selectId);
     });
 
-    startLoop({ context, info, player, colorOf, getSession: () => session });
+    startLoop({ context, info, state, player, colorOf, getSession: () => session });
 }
 
-// Кадр, который сейчас на канвасе, или null в живом режиме. Его читают
-// и отрисовка, и клик: целиться нужно в то же, что показано.
+// Кадр, который сейчас на канвасе, или null в живом режиме.
+//
+// Позиция дробная: между записанными кадрами десять тиков, и показывать
+// только их значило бы шесть картинок в секунду вместо шестидесяти.
+// Промежуточные достраиваются интерполяцией.
 function viewedFrame(world, player) {
-    return player.position === null ? null : world.history[player.position];
+    if (player.position === null) {
+        return null;
+    }
+
+    const index = Math.floor(player.position);
+    return world.history.tween(index, player.position - index);
+}
+
+// Тик показанного кадра — по нему берётся состояние того момента.
+function viewedTick(world, player) {
+    return world.history.tickAt(Math.floor(player.position));
 }
 
 // Собирает мир сценария вместе с его списком видов и графиком.
@@ -106,15 +134,20 @@ function startScenario(scenario, player) {
     world.refreshCounts();
 
     world.matchEnds = scenario.finish !== false;
+    world.breeding = scenario.breeding === true;
 
     // матч закончился — останавливаем ход времени, но перемотку оставляем.
     // Модальный alert здесь не годится: он замораживает вкладку целиком.
     world.onFinish = (winner) => {
-        player.setPaused(true);
+        player.stop();
         player.announce(winner + ' победил');
     };
 
     player.reset();
+    // сценарий может попросить открыться на паузе — так делает песочница
+    if (scenario.speed === 0) {
+        player.stop();
+    }
 
     return {
         world,
@@ -125,7 +158,7 @@ function startScenario(scenario, player) {
     };
 }
 
-function startLoop({ context, info, player, colorOf, getSession }) {
+function startLoop({ context, info, state, player, colorOf, getSession }) {
     const step = 1000 / FPS;
     // Больше пяти шагов за кадр не догоняем: после сворачивания вкладки
     // накопленный долг иначе выльется в рывок. Порог растёт вместе со
@@ -133,7 +166,10 @@ function startLoop({ context, info, player, colorOf, getSession }) {
     const MAX_STEPS = 5;
 
     let last = performance.now();
+    // долг перед живым миром считается в миллисекундах, перед историей —
+    // в кадрах: у них разный шаг, и общий счётчик пришлось бы всё время делить
     let debt = 0;
+    let frameDebt = 0;
 
     // Цикл не останавливается никогда: на паузе и при перемотке
     // мир не обновляется, но кадр всё равно нужно перерисовать.
@@ -147,13 +183,19 @@ function startLoop({ context, info, player, colorOf, getSession }) {
         const delta = now - last;
         last = now;
 
-        // Шаг мира фиксирован: ttl и скорости заданы в тиках, поэтому частота
-        // симуляции не должна зависеть от герцовки экрана. Ускорение меняет
-        // не длину шага, а число шагов на секунду реального времени.
-        const live = !player.paused && !world.stopped;
-        if (live) {
-            const maxSteps = Math.ceil(MAX_STEPS * player.speed);
-            debt += delta * player.speed;
+        const speed = player.speed;
+        // доля пути до следующего тика: на медленной скорости кадров отрисовки
+        // приходится больше, чем тиков, и без неё существа стояли бы на месте,
+        // а потом прыгали — та же рваность, что была у истории без
+        // промежуточных кадров
+        let part = 0;
+
+        if (speed > 0 && player.position === null && !world.stopped) {
+            // Живой мир: шаг фиксирован, ttl и скорости заданы в тиках, поэтому
+            // частота симуляции не должна зависеть от герцовки экрана.
+            // Ускорение меняет не длину шага, а число шагов на секунду.
+            const maxSteps = Math.ceil(MAX_STEPS * speed);
+            debt += delta * speed;
 
             let steps = 0;
             while (debt >= step && steps < maxSteps) {
@@ -165,30 +207,71 @@ function startLoop({ context, info, player, colorOf, getSession }) {
             if (steps === maxSteps) {
                 debt = 0;
             }
+            part = debt / step;
+            frameDebt = 0;
+        } else if (speed !== 0 && world.history.length > 0) {
+            // Ход по записанному: назад — всегда, вперёд — когда мы отстали
+            // от настоящего или мир уже остановлен. Мир вспять не считается,
+            // но кадры записаны, и двигаться по ним можно в обе стороны.
+            //
+            // Позиция дробная: за кадр отрисовки при ×1 проходит десятая доля
+            // записанного кадра, и показывать надо именно её, а не ждать,
+            // пока накопится целый.
+            if (player.position === null) {
+                player.setPosition(world.history.length - 1);
+            }
+
+            const newest = world.history.length - 1;
+            const moved = player.position + delta * speed / step / HISTORY_EVERY;
+
+            // догнали настоящее — возвращаемся к живому миру
+            if (moved >= newest && speed > 0 && !world.stopped) {
+                player.setPosition(null);
+            } else {
+                player.setPosition(Math.max(0, Math.min(newest, moved)));
+            }
+            debt = 0;
         }
 
         context.clearRect(0, 0, world.width, world.height);
 
         const viewed = viewedFrame(world, player);
+        // при перемотке выделенное существо берётся из восстановленного
+        // состояния того момента: и пометка, и поля панели — «тогда», а не «сейчас»
+        const selected = viewed ? world.selectionFor(viewedTick(world, player)) : world.select;
+
         if (viewed) {
             drawSnapshot(context, viewed, colorOf);
-
-            // выделенное могло быть съедено после этого кадра — помечаем
-            // его всё равно, по тому, что о нём знает сам кадр
-            const marked = world.selectionInFrame(viewed);
-            if (marked) {
-                drawSelection(context, marked);
+            if (selected) {
+                // круг ставим по промежуточному кадру, иначе он дёргался бы
+                // раз в десять тиков, пока существа едут плавно
+                drawSelection(context, { ...selected, ...positionIn(viewed, selected.id) });
             }
         } else {
-            world.draw(context, drawSelection);
+            world.draw(context, drawSelection, part);
         }
 
-        info.render(world);
-        // при перемотке счётчики берём из того же кадра, что канвас и график
-        species.render(viewed ? viewed.counts : world.getCounts());
-        player.render(world.history.length, viewed ? viewed.tick : world.tick);
-        graph.render(world.history, player.position);
+        info.render(world, selected);
+        state.render(world);
+
+        // счётчики и график идут по записанным кадрам: доли между ними
+        // им не нужны, и дробную позицию для них округляем
+        const index = viewed ? Math.floor(player.position) : null;
+        species.render(viewed ? world.history.countsAt(index) : world.getCounts());
+        player.render(world.history.length, viewed ? viewedTick(world, player) : world.tick);
+        graph.render(world.history, index);
     })();
+}
+
+// Где существо стоит в показанном кадре: у промежуточного кадра координаты
+// свои, а у выделенного объекта — те, что были на записанном тике.
+function positionIn(frame, id) {
+    for (let i = 0; i < frame.count; i++) {
+        if (frame.ids[i] === id) {
+            return { x: frame.xs[i], y: frame.ys[i] };
+        }
+    }
+    return {};
 }
 
 window.addEventListener('load', main);

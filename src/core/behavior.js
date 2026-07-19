@@ -6,7 +6,8 @@ export const Behavior = {
     TIMID: 'timid',
     HERBIVORE: 'herbivore',
     PREDATOR: 'predator',
-    COMPETE: 'compete'
+    COMPETE: 'compete',
+    CARRY: 'carry'
 };
 
 // Состояние — временный режим поверх роли. Оно перебивает поведение
@@ -32,6 +33,7 @@ export function decide(lifer, world, nears = world.getNear(lifer)) {
 // единая сигнатура — цена вызова по таблице.
 const DECIDERS = {
     [State.BERSERK]: berserk,
+    [Behavior.CARRY]: carry,
     [Behavior.COMPETE]: compete,
     [Behavior.HERBIVORE]: herbivore,
     [Behavior.PREDATOR]: predator,
@@ -50,6 +52,37 @@ function berserk(lifer, world, nears) {
     }
 
     return chase(target);
+}
+
+// Носильщик ходит по кругу: с пустыми руками — к источнику, с грузом —
+// к месту сдачи. Куда именно, задаёт вид: target — откуда берём,
+// dropAt — куда несём.
+//
+// Ищем по всему миру, а не среди соседей: постройки стоят где поставили,
+// и радиуса обзора до них обычно не хватает. Зато решение принимается раз
+// в несколько тиков, так что перебор идёт не каждый тик.
+function carry(lifer, world, nears) {
+    const loaded = lifer.load > 0;
+    const place = world.nearestOf(lifer, loaded ? lifer.dropAt : lifer.target, !loaded);
+
+    if (!place) {
+        return WANDER;
+    }
+
+    // дошли до места — отдаём или берём груз
+    if (getRange(lifer, place) < place.radius) {
+        if (loaded) {
+            place.receive();
+            lifer.load = 0;
+            // доставка возвращает силы: иначе носильщик, которому некогда
+            // отдыхать, через полминуты навсегда переходил бы на полшага
+            lifer.gainEnergy(lifer.energyMax);
+        } else if (place.give(world)) {
+            lifer.load = 1;
+        }
+    }
+
+    return chase(place);
 }
 
 // Камень-ножницы-бумага: убегаем от danger, догоняем target.

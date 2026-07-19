@@ -1,6 +1,12 @@
 // Полоска вкладок: items — [{id, name}], выбор отдаётся в onSelect.
-// Набор вкладок задаётся при создании; чтобы его сменить, полоску пересобирают
-// заново — так делает панель выделенного существа, у которого свои классы.
+//
+// Это группа переключателей, как и ряд скоростей: выбран ровно один, и видно
+// сразу все. Браузер сам гасит соседей по имени группы, поэтому подсветку
+// активной вкладки задаёт CSS, а не код.
+//
+// Слушаем click, а не change: change не срабатывает на уже выбранном, а повтор
+// по активной вкладке — это перезапуск сценария, и отдельной кнопки под него
+// заводить не хочется.
 export class Tabs {
     constructor(id, items, onSelect) {
         this.items = items;
@@ -10,21 +16,26 @@ export class Tabs {
 
         const container = document.getElementById(id);
         container.replaceChildren();
+        container.className = 'chips';
 
         for (const item of items) {
-            const el = document.createElement('button');
-            el.type = 'button';
-            el.className = 'tab';
-            el.textContent = item.name;
-            el.addEventListener('click', () => this.select(item.id));
+            const label = document.createElement('label');
+            label.className = 'chip';
 
-            container.appendChild(el);
-            this.buttons.set(item.id, el);
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.name = id;
+            input.addEventListener('click', () => this.select(item.id));
+
+            const text = document.createElement('span');
+            text.textContent = item.name;
+
+            label.append(input, text);
+            container.appendChild(label);
+            this.buttons.set(item.id, input);
         }
     }
 
-    // Повторный выбор активной вкладки тоже зовёт onSelect: для сценариев
-    // это перезапуск мира, и отдельной кнопки под него не нужно.
     select(id) {
         const item = this.items.find((candidate) => candidate.id === id);
         if (!item) {
@@ -32,10 +43,7 @@ export class Tabs {
         }
 
         this.selected = id;
-        for (const [itemId, el] of this.buttons) {
-            el.classList.toggle('active', itemId === id);
-        }
-
+        this.buttons.get(id).checked = true;
         this.onSelect(item);
     }
 }

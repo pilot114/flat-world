@@ -1,4 +1,4 @@
-import { getNearest, getRange, randInt } from '../utils/math.js';
+import { getNearest, getRange } from '../utils/math.js';
 
 export const Anim = {
     RANDOM: 'random',
@@ -33,7 +33,7 @@ export function animate(lifer, world, name, vector, nears = world.getNear(lifer)
 
     const setImpulse = IMPULSES[name];
     if (setImpulse) {
-        setImpulse(lifer, vector);
+        setImpulse(lifer, vector, world);
     } else {
         lifer.dx = 0;
         lifer.dy = 0;
@@ -55,14 +55,16 @@ export function animate(lifer, world, name, vector, nears = world.getNear(lifer)
 
 // Тип движения -> как задать импульс. Само перемещение общее для всех:
 // импульс отражается от границ мира и складывается с координатами.
+// Случайность берётся у мира, а не у Math.random: только так прогон истории
+// повторяет ту же траекторию, что была записана.
 const IMPULSES = {
     // для рандома удобнее сразу задавать угол
-    [Anim.RANDOM]: (lifer) => setImpulseByAngle(lifer, randInt(0, 360)),
+    [Anim.RANDOM]: (lifer, vector, world) => setImpulseByAngle(lifer, world.random.int(0, 360)),
 
     // используем информацию о текущем импульсе через сам объект: получаем и сохраняем
-    [Anim.PARTICLE]: (lifer) => {
+    [Anim.PARTICLE]: (lifer, vector, world) => {
         if (lifer.dx === 0 && lifer.dy === 0) {
-            setImpulseByAngle(lifer, randInt(0, 360));
+            setImpulseByAngle(lifer, world.random.int(0, 360));
         }
     },
 

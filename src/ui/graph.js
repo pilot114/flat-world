@@ -69,32 +69,35 @@ export class Graph {
         // Опознаём его по тику последнего кадра, а не по номеру: когда история
         // упирается в лимит и начинает вытеснять старые кадры, номер последнего
         // застывает навсегда, а мир продолжает идти — по номеру график замирал.
-        const last = history[end];
-        if (last.tick === this.lastTick) {
+        const last = history.tickAt(end);
+        if (last === this.lastTick) {
             return;
         }
-        this.lastTick = last.tick;
+        this.lastTick = last;
 
         const start = Math.max(0, end - this.windowSize + 1);
-        const frames = history.slice(start, end + 1);
-        this.offset = this.windowSize - frames.length;
+        this.offset = this.windowSize - (end - start + 1);
 
-        this.rescale(frames);
+        // ряды берём один раз: они же идут и в пересчёт оси, и в пути линий
+        const series = new Map();
+        for (const type of this.paths.keys()) {
+            series.set(type, history.seriesOf(type, start, end));
+        }
+
+        this.rescale(series);
 
         for (const [type, path] of this.paths) {
-            const values = frames.map((frame) => frame.counts[type] || 0);
-            path.setAttribute('d', linePath(values, (i) => this.x(i + this.offset), this.y));
+            path.setAttribute('d', linePath(series.get(type), (i) => this.x(i + this.offset), this.y));
         }
     }
 
     // Ось Y тянется за окном: видов может стать больше, чем было вначале,
     // и без пересчёта линии уходят вверх за край и срезаются clip-path.
-    rescale(frames) {
+    rescale(series) {
         let max = 0;
 
-        for (const frame of frames) {
-            for (const type of this.paths.keys()) {
-                const value = frame.counts[type] || 0;
+        for (const values of series.values()) {
+            for (const value of values) {
                 if (value > max) {
                     max = value;
                 }
