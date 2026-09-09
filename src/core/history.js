@@ -1,4 +1,4 @@
-import { liferTypes, typeByIndex, typeIndex } from './species.js';
+import { indexOfType, liferTypes, typeByIndex, typeIndex } from './species.js';
 
 // Кадры картинки: координаты, размер, вид и состояние каждого существа.
 //
@@ -112,7 +112,7 @@ export class History {
 
     // Ряд численности одного вида по кадрам [from, to] — то, что рисует график.
     seriesOf(type, from, to) {
-        const column = typeIndex(type);
+        const column = indexOfType(type);
         const values = [];
 
         for (let index = from; index <= to; index++) {
@@ -248,7 +248,7 @@ function writeFrameRow(columns, i, object) {
     columns.xs[i] = Math.round(object.x);
     columns.ys[i] = Math.round(object.y);
     columns.radii[i] = Math.min(MAX_RADIUS, Math.round(object.radius));
-    columns.types[i] = typeIndex(object.type);
+    columns.types[i] = typeIndex(object.constructor);
     columns.flags[i] = object.frameFlags();
 }
 

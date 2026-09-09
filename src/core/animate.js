@@ -5,7 +5,9 @@ export const Anim = {
     PARTICLE: 'particle',
     CIRCLE: 'circle',
     CHASE: 'chase',
-    ESCAPE: 'escape'
+    ESCAPE: 'escape',
+    IDLE: 'idle',
+    COAST: 'coast'
 };
 
 // Единственная задача animate — обновить координаты существа.
@@ -55,6 +57,10 @@ export function animate(lifer, world, name, vector, nears = world.getNear(lifer)
 
 // Тип движения -> как задать импульс. Само перемещение общее для всех:
 // импульс отражается от границ мира и складывается с координатами.
+//
+// Anim.IDLE здесь нет намеренно: у ожидания импульса не бывает, и ветка
+// по умолчанию гасит его в ноль — ровно то, что нужно.
+//
 // Случайность берётся у мира, а не у Math.random: только так прогон истории
 // повторяет ту же траекторию, что была записана.
 const IMPULSES = {
@@ -67,6 +73,12 @@ const IMPULSES = {
             setImpulseByAngle(lifer, world.random.int(0, 360));
         }
     },
+
+    // Полёт по инерции: импульс уже есть, менять нечего. Так существо
+    // движется между решениями — включая нулевой импульс, если оно решило
+    // ждать. Раньше здесь стоял PARTICLE, но тот при нулевом импульсе
+    // придумывает случайный, и решивший стоять тут же трогался с места.
+    [Anim.COAST]: () => {},
 
     [Anim.CHASE]: (lifer, vector) => setImpulseToPoint(lifer, vector, 1),
     [Anim.ESCAPE]: (lifer, vector) => setImpulseToPoint(lifer, vector, -1)

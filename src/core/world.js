@@ -1,7 +1,7 @@
 import { Behavior, State } from './behavior.js';
 import { History } from './history.js';
 import { SpatialGrid } from './grid.js';
-import { BERSERK_COLOR, createLifer, typeByIndex, typeIndex } from './species.js';
+import { BERSERK_COLOR, createLifer, liferName, liferTypes, typeByIndex, typeIndex } from './species.js';
 import { Random, randomSeed } from '../utils/random.js';
 import { getRangeSquared } from '../utils/math.js';
 
@@ -127,6 +127,8 @@ export class World {
                 this.applyPopulate(event.type, event.count);
             } else if (event.kind === 'place') {
                 this.applyPlace(event.type, event.x, event.y);
+            } else if (event.kind === 'erase') {
+                this.applyErase(event.x, event.y);
             } else {
                 this.applySpawnRate(event.type, event.chance);
             }
@@ -172,6 +174,14 @@ export class World {
         return this.applyPlace(type, x, y);
     }
 
+    // Убрать существо, ближайшее к точке, — ластик в песочнице.
+    // Вмешательство извне, поэтому идёт в журнал наравне с подселением:
+    // без записи прогон истории воскресил бы стёртое.
+    erase(x, y) {
+        this.record({ kind: 'erase', x, y });
+        return this.applyErase(x, y);
+    }
+
     // Запись в журнал. Событие относится к тику, который ещё не сыгран:
     // вмешательство случается между тиками, и прогон должен применить его
     // перед тем же тиком, иначе порядок в state — а с ним и ход обхода —
@@ -210,6 +220,14 @@ export class World {
 
     applyPlace(type, x, y) {
         return this.add(createLifer(type, x, y));
+    }
+
+    applyErase(x, y) {
+        const victim = nearestTo(this.state, { x, y });
+        if (victim) {
+            this.remove(victim);
+        }
+        return victim;
     }
 
     remove(object) {
@@ -387,7 +405,7 @@ export class World {
         let nearestRange = Infinity;
 
         for (const object of this.state) {
-            if (object.type !== type || (ready && !object.canGive())) {
+            if (object.constructor !== type || (ready && !object.canGive())) {
                 continue;
             }
 
@@ -548,10 +566,7 @@ export class World {
             const lifer = createLifer(typeByIndex(columns.types[i]), columns.xs[i], columns.ys[i]);
 
             lifer.id = columns.ids[i];
-            lifer.dx = columns.dxs[i];
-            lifer.dy = columns.dys[i];
             lifer.radius = columns.radii[i];
-            lifer.radiusView = columns.views[i];
 
             // присваиваем только то, что у вида вообще есть: лишнее поле
             // на траве изменило бы её набор полей и панель вместе с ним
@@ -559,6 +574,9 @@ export class World {
                 lifer.ttl = columns.ttls[i];
             }
             if ('energy' in lifer) {
+                lifer.dx = columns.dxs[i];
+                lifer.dy = columns.dys[i];
+                lifer.radiusView = columns.views[i];
                 lifer.energy = columns.energies[i];
                 lifer.speed = columns.speeds[i];
                 lifer.fed = columns.fed[i];
@@ -568,6 +586,8 @@ export class World {
             }
             if ('stock' in lifer) {
                 lifer.stock = columns.stock[i];
+            }
+            if ('goods' in lifer) {
                 lifer.goods = columns.goods[i];
             }
             if ('kills' in lifer) {
@@ -672,13 +692,25 @@ export class World {
 
     // Пересчитывает количество существ по видам (раз в тик).
     refreshCounts() {
-        const counts = {};
+        // Считаем в плоский массив по номеру вида: ни строк, ни хеша на каждое
+        // существо. Имена появляются один раз в конце — их читает интерфейс,
+        // а он смотрит куда реже, чем идут тики.
+        const tally = this.tally ?? (this.tally = new Uint32Array(liferTypes().length));
+        tally.fill(0);
         const competitors = new Set();
 
         for (const object of this.state) {
-            counts[object.type] = (counts[object.type] || 0) + 1;
+            const index = typeIndex(object.constructor);
+            tally[index] += 1;
             if (isCompetitor(object)) {
-                competitors.add(object.type);
+                competitors.add(index);
+            }
+        }
+
+        const counts = {};
+        for (let index = 0; index < tally.length; index++) {
+            if (tally[index] > 0) {
+                counts[typeByIndex(index)] = tally[index];
             }
         }
 
@@ -711,7 +743,7 @@ export class World {
 
         this.stopped = true;
         if (this.onFinish) {
-            this.onFinish(winner.type);
+            this.onFinish(liferName(winner));
         }
     }
 }
@@ -720,7 +752,7 @@ export class World {
 // боец остаётся бойцом, чем бы он ни был занят сейчас.
 function writeSnapshotRow(columns, i, object) {
     columns.ids[i] = object.id;
-    columns.types[i] = typeIndex(object.type);
+    columns.types[i] = typeIndex(object.constructor);
     columns.xs[i] = object.x;
     columns.ys[i] = object.y;
     columns.dxs[i] = object.dx;

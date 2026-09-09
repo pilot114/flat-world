@@ -151,7 +151,7 @@ function build(scenario, seed) {
 function digest(world) {
     const lifers = world.state.map((lifer) => [
         lifer.id,
-        lifer.type,
+        lifer.constructor.name,
         lifer.x,
         lifer.y,
         lifer.dx,

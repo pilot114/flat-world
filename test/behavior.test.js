@@ -7,7 +7,7 @@ import { Behavior, State, decide } from '../src/core/behavior.js';
 import { createLifer } from '../src/core/species.js';
 
 test('волк догоняет корову', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const wolf = world.add(createLifer('Wolf', 100, 100));
     world.add(createLifer('Cow', 150, 100));
 
@@ -18,7 +18,7 @@ test('волк догоняет корову', () => {
 });
 
 test('корова убегает от волка, даже если рядом трава', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const cow = world.add(createLifer('Cow', 100, 100));
     world.add(createLifer('Wolf', 140, 100));
     world.add(createLifer('Grass', 120, 100));
@@ -30,7 +30,7 @@ test('корова убегает от волка, даже если рядом 
 });
 
 test('боец съедает цель в пределах своего радиуса', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const stone = world.add(createLifer('Stone', 100, 100));
     const clip = world.add(createLifer('Clip', 105, 100));
     const radiusBefore = stone.radius;
@@ -43,7 +43,7 @@ test('боец съедает цель в пределах своего ради
 });
 
 test('от берсерка бегут даже те, кому он в обычной жизни цель', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const stone = world.add(createLifer('Stone', 100, 100));
     const clip = world.add(createLifer('Clip', 160, 100));
     clip.state = State.BERSERK;
@@ -55,7 +55,7 @@ test('от берсерка бегут даже те, кому он в обыч�
 });
 
 test('боец входит в режим берсерка после 5 убийств', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const stone = world.add(createLifer('Stone', 100, 100));
     stone.berserkCounter = 5;
 
@@ -69,7 +69,7 @@ test('боец входит в режим берсерка после 5 убий
 });
 
 test('берсерк умирает по истечении своего режима', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const stone = world.add(createLifer('Stone', 100, 100));
     stone.berserkTtl = 1;
 
@@ -79,7 +79,7 @@ test('берсерк умирает по истечении своего реж�
 });
 
 test('chase двигает существо к цели, escape — от неё', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const ghost = world.add(createLifer('Ghost', 100, 100));
 
     animate(ghost, world, Anim.CHASE, { x: 200, y: 100 });
@@ -91,7 +91,7 @@ test('chase двигает существо к цели, escape — от неё'
 });
 
 test('существо не выходит за границы мира', () => {
-    const world = new World(200, 200);
+    const world = new World(200, 200, 1);
     const ghost = world.add(createLifer('Ghost', 199, 100));
 
     for (let i = 0; i < 50; i++) {
@@ -101,7 +101,7 @@ test('существо не выходит за границы мира', () => 
 });
 
 test('particle задаёт импульс один раз и сохраняет его', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const ghost = world.add(createLifer('Ghost', 100, 100));
 
     animate(ghost, world, Anim.PARTICLE, null);
@@ -115,7 +115,7 @@ test('particle задаёт импульс один раз и сохраняет
 });
 
 test('совпадающие координаты не ломают импульс', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const ghost = world.add(createLifer('Ghost', 100, 100));
 
     animate(ghost, world, Anim.CHASE, { x: 100, y: 100 });
@@ -124,7 +124,7 @@ test('совпадающие координаты не ломают импуль
 });
 
 test('симуляция матча идёт без ошибок и сходится к одному виду', () => {
-    const world = new World(300, 300);
+    const world = new World(300, 300, 1);
     world.populate('Stone', 15);
     world.populate('Clip', 15);
     world.populate('Paper', 15);
@@ -140,7 +140,7 @@ test('симуляция матча идёт без ошибок и сходит
 });
 
 test('circle ведёт по окружности вокруг центра, минуя импульс', () => {
-    const world = new World(1000, 500);
+    const world = new World(1000, 500, 1);
     const ghost = world.add(createLifer('Ghost', 0, 0));
     ghost.dx = 5;
     ghost.dy = 5;
@@ -157,7 +157,7 @@ test('circle ведёт по окружности вокруг центра, м�
 });
 
 test('random задаёт новый импульс на каждом вызове', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const ghost = world.add(createLifer('Ghost', 250, 250));
     const seen = new Set();
 
@@ -172,7 +172,7 @@ test('random задаёт новый импульс на каждом вызов
 });
 
 test('незнакомый тип движения гасит импульс', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const ghost = world.add(createLifer('Ghost', 250, 250));
     ghost.dx = 5;
     ghost.dy = 5;

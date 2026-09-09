@@ -3,6 +3,9 @@
 <head>
 	<meta charset="UTF-8">
 	<title>flat world</title>
+	<!-- Иконка встроена в страницу: иначе браузер просит /favicon.ico
+	     у сервера и получает 404 в консоль на каждой загрузке. -->
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23fff8dc'/%3E%3Ccircle cx='5' cy='6' r='2.5' fill='%23228b22'/%3E%3Ccircle cx='11' cy='9' r='3' fill='%23808080'/%3E%3C/svg%3E">
 	<style>
 		body {
 			background-color: cornsilk;
@@ -155,6 +158,34 @@
 		#species {
 			font-size: 13px;
 		}
+		/* Каталог: пока видов мало — столбик, а в песочнице их семнадцать,
+		   и подряд такой список взглядом не окинуть. Тогда он раскладывается
+		   в две колонки и разбивается по группам иерархии. */
+		.catalog.grouped {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 0 1em;
+		}
+		.catalog-kind {
+			grid-column: 1 / -1;
+			margin-top: 0.4em;
+			font-size: 11px;
+			color: #8a7f63;
+		}
+		/* ластик берёт цвет фона, поэтому нужен контур — иначе его не видно */
+		.species.eraser .species-dot {
+			border: 1px solid #8a7f63;
+		}
+		/* кнопка стоит под каталогом и появляется только в песочнице */
+		#forget {
+			align-self: flex-start;
+			font-size: 11px;
+			padding: 3px 8px;
+			border-radius: 3px;
+		}
+		#forget.hidden {
+			display: none;
+		}
 		/* цвет, название, количество — легенда и палитра одновременно */
 		.species {
 			display: flex;
@@ -280,6 +311,7 @@
 			<pre id="worldInfo"></pre>
 			<svg id="graph" width="400" height="200"></svg>
 			<div id="species"></div>
+			<button id="forget" type="button" class="chip">забыть песочницу</button>
 			<div id="selectPanel">
 				<div id="selectInfo"></div>
 			</div>

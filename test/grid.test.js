@@ -25,7 +25,7 @@ function assertSameNears(world, lifer, message) {
 }
 
 function populatedWorld(per = 60) {
-    const world = new World(1000, 500);
+    const world = new World(1000, 500, 1);
     world.populate('Stone', per);
     world.populate('Clip', per);
     world.populate('Paper', per);
@@ -76,7 +76,7 @@ test('сетка верна для существа на границе мира
 });
 
 test('удалённое существо сразу пропадает из соседей', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const hunter = world.add(createLifer('Stone', 100, 100));
     const prey = world.add(createLifer('Clip', 130, 100));
 
@@ -88,7 +88,7 @@ test('удалённое существо сразу пропадает из с�
 });
 
 test('существо, добавленное между тиками, попадает в сетку', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const hunter = world.add(createLifer('Stone', 100, 100));
     world.update(0);
 
@@ -114,7 +114,7 @@ test('переход существа между ячейками отслежи
 });
 
 test('служебное поле ячейки не попадает в состояние существа', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const lifer = world.add(createLifer('Stone', 10, 20));
 
     const fields = Object.keys(lifer);

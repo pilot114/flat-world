@@ -18,6 +18,23 @@ export const State = {
 };
 
 const WANDER = { anim: Anim.PARTICLE, vector: null };
+const IDLE = { anim: Anim.IDLE, vector: null };
+
+// Предел роста бойца. Кадр картинки держит радиус одним байтом, и переросший
+// рисовался бы в истории обрезанным — молча, как это уже случилось с ttl.
+// На практике до предела далеко: замер по всем сценариям даёт максимум 24,
+// так что это страховка, а не ограничение.
+const MAX_GROWTH = 255;
+
+// Какую долю запаса возвращает передышка на месте сдачи. Носильщику некогда
+// дрейфовать, и без передышки он через полминуты навсегда переходил бы
+// на полшага. Возвращать всё тоже не годится — тогда усталость ему нипочём.
+//
+// Величина выбрана из середины замеренного: и при половине, и при полном
+// возврате носильщики остаются без сил заметную долю времени (36% против
+// 28%) — маршруты длиннее одного запаса. Разброс между прогонами при этом
+// перекрывает разницу между настройками, так что точнее подбирать нечего.
+const REST_SHARE = 0.75;
 
 // Решает, что существо делает в текущем тике: возвращает {anim, vector}.
 // Побочные эффекты (поедание соседей) выполняются здесь же.
@@ -63,23 +80,49 @@ function berserk(lifer, world, nears) {
 // в несколько тиков, так что перебор идёт не каждый тик.
 function carry(lifer, world, nears) {
     const loaded = lifer.load > 0;
-    const place = world.nearestOf(lifer, loaded ? lifer.dropAt : lifer.target, !loaded);
+    const wanted = loaded ? lifer.dropAt : lifer.target;
+    const place = world.nearestOf(lifer, wanted, !loaded);
 
+    // брать пока нечего — ждём, а не бродим
     if (!place) {
-        return WANDER;
+        return wait(lifer, world.nearestOf(lifer, wanted, false));
     }
 
-    // дошли до места — отдаём или берём груз
-    if (getRange(lifer, place) < place.radius) {
+    // Дошли до места — отдаём или берём груз. Считаем по сумме радиусов,
+    // то есть по касанию тел, а не по одному лишь радиусу места.
+    //
+    // Иначе у мелкого ресурса зона подбора оказывается целиком внутри зоны
+    // расталкивания: руда радиусом 7, носильщик — 8, и его выталкивает
+    // из той самой области, куда надо войти. Одинокий шахтёр залипал так
+    // в четверти случаев — колебался рядом с рудой, пока не истекал срок.
+    // Толкучка, наоборот, выручала: соседи проталкивали его через щель.
+    if (getRange(lifer, place) < place.radius + lifer.radius) {
         if (loaded) {
             place.receive();
             lifer.load = 0;
-            // доставка возвращает силы: иначе носильщик, которому некогда
-            // отдыхать, через полминуты навсегда переходил бы на полшага
-            lifer.gainEnergy(lifer.energyMax);
+            lifer.gainEnergy(lifer.energyMax * REST_SHARE);
         } else if (place.give(world)) {
             lifer.load = 1;
         }
+    }
+
+    return chase(place);
+}
+
+// Ожидание у места, где нужное появится: склад наполнится, завод соберёт
+// товар — и носильщик встретит это на месте, а не на другом конце карты.
+//
+// Дрейф тут не подходит именно потому, что место известно заранее. Возчик
+// при пустых складах уходил на полкарты и возвращался около секунды,
+// а торговец, которому нечего везти почти половину времени, бродил вместо
+// того, чтобы стоять у завода.
+//
+// Если такого места нет вовсе — ресурсы кончились, а появляются они где
+// придётся, — ждём там, где стоим: искать наугад бессмысленно, а стоя
+// существо ещё и переводит дух, ожидание считается отдыхом.
+function wait(lifer, place) {
+    if (!place || getRange(lifer, place) < place.radius + lifer.radius) {
+        return IDLE;
     }
 
     return chase(place);
@@ -108,18 +151,18 @@ function compete(lifer, world, nears) {
 
         if (endgame) {
             // в эндшпиле цель — любой чужак, роль определится размером
-            if (object.type !== lifer.type && range < targetRange) {
+            if (object.constructor !== lifer.constructor && range < targetRange) {
                 target = object;
                 targetRange = range;
             }
             continue;
         }
 
-        if (object.type === lifer.danger && range < dangerRange) {
+        if (object.constructor === lifer.danger && range < dangerRange) {
             danger = object;
             dangerRange = range;
         }
-        if (object.type === lifer.target && range < targetRange) {
+        if (object.constructor === lifer.target && range < targetRange) {
             target = object;
             targetRange = range;
         }
@@ -142,7 +185,7 @@ function compete(lifer, world, nears) {
     // съедаем цель и растём
     if (target && isReachable(lifer, target)) {
         lifer.eat(world, target);
-        lifer.radius += 1;
+        lifer.radius = Math.min(MAX_GROWTH, lifer.radius + 1);
         lifer.radiusView += 1;
         lifer.speed += 0.1;
     }
@@ -188,7 +231,9 @@ function timid(lifer, world, nears) {
     return nearest ? escape(nearest) : WANDER;
 }
 
-// Ближайший сосед заданного вида. Отдельная функция вместо предиката-замыкания:
+// Ближайший сосед заданного вида. Вид — сам класс: сравнение ссылок дешевле
+// строк, а поля danger и target держат именно классы.
+// Отдельная функция вместо предиката-замыкания:
 // decide() зовётся для каждого существа в каждом тике, и замыкание там —
 // лишняя аллокация на ровном месте.
 function nearestOfType(lifer, nears, type) {
@@ -200,7 +245,7 @@ function nearestOfType(lifer, nears, type) {
     let nearestRange = Infinity;
 
     for (const object of nears) {
-        if (object.type !== type) {
+        if (object.constructor !== type) {
             continue;
         }
 

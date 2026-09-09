@@ -3,16 +3,23 @@ import { HISTORY_EVERY, World } from './core/world.js';
 import { drawSelection, drawSnapshot } from './render/draw.js';
 import { getEventLocation } from './utils/dom.js';
 import { SCENARIOS } from './scenarios.js';
+import { clear as clearSaved, load as loadSaved, save as saveWorld } from './utils/store.js';
 import { Graph } from './ui/graph.js';
 import { InfoPanel } from './ui/infoPanel.js';
 import { Player } from './ui/player.js';
-import { SpeciesPanel } from './ui/speciesPanel.js';
+import { ERASER, SpeciesPanel } from './ui/speciesPanel.js';
 import { StatePanel } from './ui/statePanel.js';
 import { Tabs } from './ui/tabs.js';
 
 const WIDTH = 1000;
 const HEIGHT = 500;
 const FPS = 60;
+
+// Песочницу собирают руками, и терять её при перезагрузке обидно —
+// в отличие от сценариев, которые пересобираются из описания за миг.
+const SAVED = 'flatworld.sandbox';
+// Как часто сохранять: чаще незачем, а localStorage пишется синхронно.
+const SAVE_EVERY = 3000;
 
 function main() {
     const canvas = document.getElementById('canvas');
@@ -66,11 +73,20 @@ function main() {
     // через ссылку, а не захватывают её при старте.
     let session = null;
     const scenarioInfo = document.getElementById('scenarioInfo');
+    const forget = document.getElementById('forget');
     const tabs = new Tabs('tabs', SCENARIOS, (scenario) => {
         scenarioInfo.textContent = scenario.description;
         session = startScenario(scenario, player);
+        forget.classList.toggle('hidden', !session.sandbox);
     });
     tabs.select(SCENARIOS[0].id);
+
+    // Забыть сохранённую песочницу и начать её заново. Кнопка живёт рядом
+    // с каталогом и в прочих сценариях прячется — забывать там нечего.
+    forget.addEventListener('click', () => {
+        clearSaved(SAVED);
+        tabs.select('sandbox');
+    });
 
     // Клик по канвасу: с выбранным типом — подселяем существо,
     // без выбора — выделяем ближайшее.
@@ -78,10 +94,16 @@ function main() {
         const location = getEventLocation(canvas, event);
         const { world } = session;
 
-        if (session.species.selected) {
+        const chosen = session.species.selected;
+
+        if (chosen === ERASER) {
+            world.erase(location.x, location.y);
+            return;
+        }
+        if (chosen) {
             // через place, а не add: подселение — вмешательство извне,
             // и без записи в журнал прогон истории его не повторит
-            world.place(session.species.selected, location.x, location.y);
+            world.place(chosen, location.x, location.y);
             return;
         }
 
@@ -123,9 +145,19 @@ function startScenario(scenario, player) {
     // виды сценария — ключи setup: их и показываем в списке и на графике.
     // Песочница начинается пустой, поэтому перечисляет виды сама
     const types = scenario.types ?? Object.keys(scenario.setup);
+    const sandbox = scenario.id === 'sandbox';
     const world = new World(WIDTH, HEIGHT);
 
-    for (const [type, count] of Object.entries(scenario.setup)) {
+    // Песочница поднимается с того места, где её оставили. Сохранённый слепок
+    // разворачивается вместо заселения — журнал и история при этом начинаются
+    // заново, прошлое прежнего сеанса показать всё равно нечем.
+    const saved = sandbox ? loadSaved(SAVED) : null;
+    if (saved) {
+        world.loadSnapshot(saved);
+        world.journalCursor = 0;
+    }
+
+    for (const [type, count] of Object.entries(saved ? {} : scenario.setup)) {
         world.populate(type, count);
     }
     for (const [type, chance] of Object.entries(scenario.spawn || {})) {
@@ -151,7 +183,8 @@ function startScenario(scenario, player) {
 
     return {
         world,
-        species: new SpeciesPanel('species', types),
+        sandbox,
+        species: new SpeciesPanel('species', types, { eraser: sandbox }),
         graph: new Graph('#graph', world, types),
         // время жизни мира без учёта пауз — иначе простой занижает расчётный fps
         elapsed: 0
@@ -166,6 +199,7 @@ function startLoop({ context, info, state, player, colorOf, getSession }) {
     const MAX_STEPS = 5;
 
     let last = performance.now();
+    let savedAt = 0;
     // долг перед живым миром считается в миллисекундах, перед историей —
     // в кадрах: у них разный шаг, и общий счётчик пришлось бы всё время делить
     let debt = 0;
@@ -249,6 +283,12 @@ function startLoop({ context, info, state, player, colorOf, getSession }) {
             }
         } else {
             world.draw(context, drawSelection, part);
+        }
+
+        // песочницу сохраняем не каждый кадр: localStorage пишется синхронно
+        if (session.sandbox && now - savedAt > SAVE_EVERY) {
+            savedAt = now;
+            saveWorld(SAVED, world.captureSnapshot());
         }
 
         info.render(world, selected);

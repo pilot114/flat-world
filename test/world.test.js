@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { World, storedRow, storedWorld } from '../src/core/world.js';
-import { Base, Flag, Grass, Stone, Clip, Paper, createLifer, liferFieldTable, liferTypes, typeByIndex } from '../src/core/species.js';
+import { getRange } from '../src/utils/math.js';
+import { Base, Flag, Grass, Stone, Clip, Paper, createLifer, liferFieldTable, liferName, liferTypes, nameOfType, typeByIndex } from '../src/core/species.js';
 
 // Существа пересматривают решение не каждый тик, а раз в несколько:
 // иначе, оказавшись между двумя равными раздражителями, они дрожат.
@@ -15,7 +16,7 @@ function until(world, done, limit = 30) {
 }
 
 test('add назначает уникальные id', () => {
-    const world = new World(100, 100);
+    const world = new World(100, 100, 1);
     const a = world.add(new Grass(10, 10));
     const b = world.add(new Grass(20, 20));
 
@@ -24,7 +25,7 @@ test('add назначает уникальные id', () => {
 });
 
 test('remove убирает существо и снимает выделение', () => {
-    const world = new World(100, 100);
+    const world = new World(100, 100, 1);
     const grass = world.add(new Grass(10, 10));
     world.select = grass;
 
@@ -36,7 +37,7 @@ test('remove убирает существо и снимает выделени�
 });
 
 test('getNear возвращает соседей в радиусе обзора, кроме себя', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const wolf = world.add(createLifer('Wolf', 100, 100));
     const near = world.add(new Grass(150, 100));
     world.add(new Grass(400, 400));
@@ -47,7 +48,7 @@ test('getNear возвращает соседей в радиусе обзора
 });
 
 test('selectByLocation находит ближайшее существо и не портит его', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.add(new Grass(10, 10));
     const target = world.add(new Grass(100, 100));
 
@@ -59,7 +60,7 @@ test('selectByLocation находит ближайшее существо и н�
 });
 
 test('history пишет кадр каждые 10 тиков', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.add(new Grass(10.5, 20.5));
 
     for (let i = 0; i < 11; i++) {
@@ -79,7 +80,7 @@ test('history пишет кадр каждые 10 тиков', () => {
 });
 
 test('кадр картинки занимает 11 байт на существо, полный слепок — 72', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.populate('Stone', 50);
     world.populate('Clip', 50);
 
@@ -99,10 +100,10 @@ test('накладные расходы кадра не зависят от на
     // Кадры лежат в общих колонках, а не отдельными объектами: раньше кадр
     // с одним существом стоил те же ~1300 байт, что и кадр с тремя сотнями,
     // и пустой мир копил мегабайты, показывая нулевой размер.
-    const busy = new World(500, 500);
+    const busy = new World(500, 500, 1);
     busy.populate('Grass', 300);
 
-    const empty = new World(500, 500);
+    const empty = new World(500, 500, 1);
     empty.populate('Grass', 1);
 
     for (let tick = 0; tick < 1000; tick++) {
@@ -116,9 +117,11 @@ test('накладные расходы кадра не зависят от на
 });
 
 test('в кадр попадают только живые существа', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const stone = world.add(new Stone(100, 100));
-    world.add(new Clip(105, 100)); // окажется съеден, как только камень решится
+    // вплотную: клип убегает с той же скоростью, и если дать ему разойтись
+    // до первого решения камня, догнать его тот уже не сможет
+    world.add(new Clip(102, 100));
     world.add(new Paper(400, 400));
 
     until(world, () => stone.kills > 0);
@@ -135,7 +138,7 @@ test('в кадр попадают только живые существа', ()
 });
 
 test('в кадре истории сохраняются счётчики того момента', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.populate('Stone', 3);
     world.populate('Clip', 2);
 
@@ -151,7 +154,7 @@ test('в кадре истории сохраняются счётчики то�
 });
 
 test('в кадре истории видно, что боец в режиме берсерка', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const stone = world.add(new Stone(30, 40));
     world.add(new Clip(480, 480)); // второй вид, иначе матч кончится на первом тике
     stone.berserkCounter = 5;
@@ -165,7 +168,7 @@ test('в кадре истории видно, что боец в режиме �
 });
 
 test('берсерк остаётся бойцом своего вида и не заканчивает матч', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const stone = world.add(new Stone(30, 40));
     world.add(new Clip(480, 480));
     stone.berserkCounter = 5;
@@ -215,7 +218,7 @@ test('съеденное существо всё равно выделяется
 });
 
 test('выделение — это id, а живой объект лишь его разрешение', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const grass = world.add(new Grass(10, 10));
 
     world.select = grass;
@@ -251,7 +254,7 @@ test('поля выделенного берутся из показанного
 });
 
 test('песочница не объявляет победу и не останавливает время', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.matchEnds = false;
     world.add(new Stone(10, 10));
     world.onFinish = () => assert.fail('в песочнице матча нет');
@@ -264,7 +267,7 @@ test('песочница не объявляет победу и не остан
 });
 
 test('история хранится целиком, с самого первого кадра', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.add(new Grass(10, 20));
 
     for (let i = 0; i < 6200; i++) {
@@ -278,7 +281,7 @@ test('история хранится целиком, с самого перво
 });
 
 test('historyBytes считает и кадры картинки, и ключевые кадры', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.populate('Stone', 10);
     world.populate('Clip', 10);
 
@@ -294,7 +297,7 @@ test('historyBytes считает и кадры картинки, и ключе�
 });
 
 test('существо исчезает, когда заканчивается ttl', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const cow = world.add(createLifer('Cow', 10, 10));
     cow.ttl = 3;
 
@@ -306,7 +309,7 @@ test('существо исчезает, когда заканчивается t
 });
 
 test('неподвижное существо не стареет — его только съедают', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const grass = world.add(new Grass(10, 10));
 
     // возраст появляется у Creature вместе с движением: трава от старости
@@ -322,7 +325,7 @@ test('неподвижное существо не стареет — его т�
 });
 
 test('счётчики видов пересчитываются на каждом тике', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.populate('Stone', 3);
     world.populate('Clip', 2);
 
@@ -334,7 +337,7 @@ test('счётчики видов пересчитываются на каждо
 });
 
 test('матч останавливается, когда остаётся один вид бойцов', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.add(new Stone(10, 10));
     let winner = null;
     world.onFinish = (name) => { winner = name; };
@@ -346,7 +349,7 @@ test('матч останавливается, когда остаётся од�
 });
 
 test('матч завершается, пока трава и коровы ещё живы', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.add(new Stone(10, 10));
     world.add(new Grass(400, 400));
     world.add(createLifer('Cow', 450, 450));
@@ -361,7 +364,7 @@ test('матч завершается, пока трава и коровы ещ�
 });
 
 test('эндшпиль не включается на паре «боец + не боец»', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const stone = world.add(new Stone(100, 100));
     const grass = world.add(new Grass(105, 100));
 
@@ -374,7 +377,7 @@ test('эндшпиль не включается на паре «боец + не
 });
 
 test('подсев добавляет существ с заданной вероятностью', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.setSpawnRate('Grass', 1);
 
     world.update(0);
@@ -389,7 +392,7 @@ test('подсев добавляет существ с заданной вер�
 });
 
 test('мир из одной травы не считается победой', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     world.add(new Grass(10, 10));
     world.onFinish = () => assert.fail('трава не участвует в матче');
 
@@ -401,7 +404,9 @@ test('мир из одной травы не считается победой',
 test('createLifer знает все модели из реестра', () => {
     for (const type of liferTypes()) {
         const lifer = createLifer(type, 1, 2);
-        assert.equal(lifer.type, type);
+        // имени вида у существа нет — оно опознаётся по классу
+        assert.equal(liferName(lifer), type);
+        assert.equal('type' in lifer, false);
         assert.equal(lifer.x, 1);
     }
 
@@ -413,13 +418,14 @@ test('камень-ножницы-бумага: цикл danger/target замк�
     const clip = new Clip(0, 0);
     const paper = new Paper(0, 0);
 
-    assert.equal(stone.target, clip.type);
-    assert.equal(clip.target, paper.type);
-    assert.equal(paper.target, stone.type);
+    // связи держат сами классы, а не имена: сравнение ссылок дешевле строк
+    assert.equal(stone.target, Clip);
+    assert.equal(clip.target, Paper);
+    assert.equal(paper.target, Stone);
 
-    assert.equal(stone.danger, paper.type);
-    assert.equal(clip.danger, stone.type);
-    assert.equal(paper.danger, clip.type);
+    assert.equal(stone.danger, Paper);
+    assert.equal(clip.danger, Stone);
+    assert.equal(paper.danger, Clip);
 });
 
 test('значения вида лежат на прототипе, а не в каждой особи', () => {
@@ -443,7 +449,7 @@ test('изменение величины у особи не трогает её
 });
 
 test('травоядное ест, не заводя счётчиков бойца', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const cow = world.add(createLifer('Cow', 100, 100));
     const grass = world.add(new Grass(102, 100));
 
@@ -466,7 +472,7 @@ test('обессиленное существо движется вполсил�
 });
 
 test('добыча возвращает силы, но не выше предела вида', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const cow = world.add(createLifer('Cow', 100, 100));
     const grass = world.add(new Grass(200, 200));
     cow.energy = 10;
@@ -561,7 +567,7 @@ test('нынешнее значение особи важнее того, что
 });
 
 test('погоня тратит силы, а дрейф их возвращает', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const wolf = world.add(createLifer('Wolf', 100, 100));
     const cow = world.add(createLifer('Cow', 160, 100));
 
@@ -591,7 +597,7 @@ test('обессиленное существо движется вполсил�
 });
 
 test('добыча возвращает силы, но не выше предела вида', () => {
-    const world = new World(500, 500);
+    const world = new World(500, 500, 1);
     const cow = world.add(createLifer('Cow', 100, 100));
     const grass = world.add(new Grass(200, 200));
     cow.energy = 10;
@@ -716,7 +722,11 @@ test('ключевой кадр снимается до хода тика, ка�
     const stone = world.place('Stone', 100, 100);
     const startX = stone.x;
 
-    world.update(0);
+    // до первого решения существо стоит: между решениями оно летит
+    // по прежнему импульсу, а прежнего у новорождённого нет
+    for (let tick = 0; tick < 10; tick++) {
+        world.update(tick * 16);
+    }
 
     // слепок — состояние на начало тика: с него прогон и начинается
     const stored = storedRow(world.keyframes[0], stone.id)
@@ -724,8 +734,8 @@ test('ключевой кадр снимается до хода тика, ка�
     assert.equal(stored.value, startX);
 
     // кадр картинки — уже после движения
-    assert.equal(world.history.at(0).xs[0], Math.round(stone.x));
-    assert.notEqual(Math.round(stone.x), Math.round(startX));
+    assert.equal(world.history.at(0).xs[0], Math.round(startX));
+    assert.notEqual(Math.round(stone.x), Math.round(startX), 'к десятому тику сдвинулся');
 });
 
 test('слепок хранит и состояние самого мира, а не только существ', () => {
@@ -821,4 +831,136 @@ test('промежуточный кадр сшивает соседние по i
     const middle = world.history.tween(2, 0.5);
     const ids = [...middle.ids].slice(0, middle.count);
     assert.deepEqual(ids, [...ids].sort((x, y) => x - y), 'id идут по возрастанию');
+});
+
+test('вид в полях связей показывается именем, а не классом', () => {
+    const cow = createLifer('Cow', 0, 0);
+    const byField = new Map(liferFieldTable(cow).rows.map((row) => [row.field, row.cells]));
+
+    // в поле лежит класс — сравнение ссылок дешевле строк
+    assert.equal(typeof byField.get('target').at(-1).value, 'function');
+
+    // но человеку показывают имя вида: печатать класс значило бы вывалить
+    // в панель его исходник целиком
+    assert.equal(nameOfType(byField.get('target').at(-1).value), 'Grass');
+    assert.equal(nameOfType(byField.get('danger').at(-1).value), 'Wolf');
+    assert.equal(nameOfType(createLifer('Logger', 0, 0).dropAt), 'Store');
+});
+
+test('носильщик забирает груз, а не колеблется рядом с ним', () => {
+    // Зона подбора должна выходить за зону расталкивания. У мелкого ресурса
+    // она иначе оказывается целиком внутри неё: руда радиусом 7, носильщик 8,
+    // и его выталкивает из той самой области, куда надо войти.
+    const world = new World(1000, 500, 1);
+    const ore = world.place('Ore', 500, 250);
+    const miner = world.place('Miner', 430, 250);
+    world.place('Store', 900, 250);
+
+    let tick = 0;
+    for (; tick < 400 && !ore.removed; tick++) {
+        world.update(tick * 16);
+    }
+
+    assert.equal(ore.removed, true, 'руда должна быть подобрана');
+    assert.equal(miner.load, 1, 'и оказаться в руках');
+    assert.ok(tick < 200, 'причём без долгого топтания рядом: ушло тиков ' + tick);
+});
+
+test('носильщик доходит и до крупной постройки', () => {
+    // обратная крайность: склад радиусом 16, и зона подбора не должна
+    // схлопнуться из-за того, что мы стали считать по касанию тел
+    const world = new World(1000, 500, 1);
+    const store = world.place('Store', 500, 250);
+    const carter = world.place('Carter', 400, 250);
+    world.place('Plant', 900, 250);
+    store.stock = 5;
+
+    for (let tick = 0; tick < 400 && carter.load === 0; tick++) {
+        world.update(tick * 16);
+    }
+
+    assert.equal(carter.load, 1);
+    assert.equal(store.stock, 4);
+});
+
+test('ластик убирает ближайшее существо и попадает в журнал', () => {
+    const world = new World(1000, 500, 1);
+    world.place('Cow', 100, 100);
+    const victim = world.place('Wolf', 300, 300);
+    world.place('Grass', 700, 400);
+
+    assert.equal(world.erase(305, 305), victim);
+    assert.equal(victim.removed, true);
+
+    // стирание — вмешательство извне наравне с подселением
+    assert.deepEqual(world.journal.map((event) => event.kind),
+        ['place', 'place', 'place', 'erase']);
+});
+
+test('прогон истории не воскрешает стёртое', () => {
+    const world = new World(1000, 500, 1);
+    world.place('Cow', 100, 100);
+    world.place('Wolf', 300, 300);
+
+    for (let tick = 0; tick < 20; tick++) {
+        world.update(tick * 16);
+    }
+    world.erase(305, 305);
+    for (let tick = 20; tick < 60; tick++) {
+        world.update(tick * 16);
+    }
+
+    // без записи в журнал прогон восстановил бы волка обратно
+    const before = world.at(10).state.map(liferName);
+    const after = world.at(50).state.map(liferName);
+
+    assert.ok(before.includes('Wolf'), 'до стирания волк был');
+    assert.equal(after.includes('Wolf'), false, 'после — нет');
+});
+
+test('носильщик ждёт у склада, а не уходит бродить', () => {
+    const world = new World(1000, 500, 4);
+    const store = world.place('Store', 500, 250);
+    world.place('Plant', 520, 250);
+    const carter = world.place('Carter', 500, 260);
+
+    // склад пуст: везти нечего
+    let farthest = 0;
+    for (let tick = 0; tick < 1200; tick++) {
+        world.update(tick * 16);
+        farthest = Math.max(farthest, getRange(carter, store));
+    }
+
+    // место известно заранее, поэтому дрейф тут — чистый проигрыш:
+    // без ожидания возчик уходил на полкарты
+    assert.ok(farthest < 60, 'не должен отходить далеко: отошёл на ' + Math.round(farthest));
+
+    // и подхватывает груз почти сразу, как только он появился
+    store.stock = 5;
+    let waited = 0;
+    for (; waited < 600 && carter.load === 0; waited++) {
+        world.update((1200 + waited) * 16);
+    }
+
+    assert.equal(carter.load, 1);
+    assert.ok(waited < 60, 'должен подхватить сразу: ждал тиков ' + waited);
+});
+
+test('когда ждать негде, носильщик стоит на месте', () => {
+    const world = new World(1000, 500, 4);
+    // ни одного дерева в мире: они появляются где придётся, и бродить наугад
+    // незачем — стоя существо ещё и переводит дух
+    const logger = world.place('Logger', 500, 250);
+    world.place('Store', 700, 250);
+    logger.energy = 100;
+
+    const start = { x: logger.x, y: logger.y };
+    for (let tick = 0; tick < 200; tick++) {
+        world.update(tick * 16);
+    }
+
+    assert.equal(logger.dx, 0);
+    assert.equal(logger.dy, 0);
+    assert.equal(getRange(logger, start), 0, 'не сдвинулся');
+    assert.ok(logger.energy > 100, 'ожидание считается отдыхом: запас вырос');
 });

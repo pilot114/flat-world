@@ -1,4 +1,4 @@
-import { liferFieldTable } from '../core/species.js';
+import { liferFieldTable, nameOfType } from '../core/species.js';
 import { objectToString } from '../utils/dom.js';
 
 // Текстовые панели: состояние мира и выделенное существо.
@@ -42,8 +42,8 @@ export class InfoPanel {
         const table = liferFieldTable(lifer);
 
         // разметка зависит только от класса — пересобираем её при смене вида
-        if (lifer.type !== this.shownType) {
-            this.shownType = lifer.type;
+        if (lifer.constructor !== this.shownType) {
+            this.shownType = lifer.constructor;
             this.shownValues = null;
             this.buildTable(table);
         }
@@ -110,6 +110,11 @@ function text(cell) {
 // Внутри мир считает в долях пикселя, но показывать дробную пыль незачем:
 // координаты округляем до пикселей, мелкие величины — до сотых.
 function format(value) {
+    // в danger, target и dropAt лежат классы: показываем имя вида,
+    // а не исходник класса целиком
+    if (typeof value === 'function') {
+        return nameOfType(value);
+    }
     if (!Number.isFinite(value) || Number.isInteger(value)) {
         return value;
     }

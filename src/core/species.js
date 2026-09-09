@@ -67,13 +67,6 @@ export class Base {
         this.removed = false;
         this.x = x;
         this.y = y;
-        this.dx = 0;
-        this.dy = 0;
-
-        // Временное состояние поверх поведения вида; null — обычная жизнь.
-        // Поведение при этом не затирается: по нему существо остаётся
-        // травоядным или бойцом, чем бы оно ни было занято сейчас.
-        this.state = null;
     }
 
     // part — доля пути до следующего тика: на медленной скорости кадров
@@ -113,10 +106,7 @@ export class Base {
 }
 
 defineSpecies(Base, {
-    type: 'Base',
-    behavior: null,
     radius: 8,
-    radiusView: 0,
     color: 'black'
 });
 
@@ -126,6 +116,9 @@ defineSpecies(Base, {
 export class Creature extends Base {
     constructor(x, y) {
         super(x, y);
+        // импульс: на сколько существо сдвинется в этом тике
+        this.dx = 0;
+        this.dy = 0;
         // запас сил; вид задаёт и стартовое значение, и потолок
         this.energy = this.energyMax;
         // съедено с последнего потомка
@@ -142,8 +135,9 @@ export class Creature extends Base {
             // — и сразу за весь промежуток до следующего решения
             this.spend(animate(this, world, anim, vector, nears), this.reaction);
         } else {
-            // между решениями существо летит по прежнему импульсу
-            animate(this, world, Anim.PARTICLE, null, NOBODY);
+            // между решениями существо летит по прежнему импульсу —
+            // в том числе по нулевому, если решило ждать
+            animate(this, world, Anim.COAST, null, NOBODY);
         }
 
         this.breed(world);
@@ -188,8 +182,7 @@ export class Creature extends Base {
 
         const angle = world.random.int(0, 359) * (Math.PI / 180);
         const away = this.radius * BREED_AWAY;
-        const child = createLifer(
-            this.type,
+        const child = new this.constructor(
             clamp(this.x + Math.cos(angle) * away, 1, world.width - 1),
             clamp(this.y + Math.sin(angle) * away, 1, world.height - 1)
         );
@@ -228,6 +221,7 @@ export class Creature extends Base {
 }
 
 defineSpecies(Creature, {
+    behavior: null,
     radiusView: 100,
     speed: 1,
     ttl: MINUTE * 10,
@@ -279,7 +273,11 @@ defineSpecies(Wolf, {
     speed: 1.2,
     color: 'gray',
     target: 'Cow',
-    breedAfter: 6
+    // Восемь коров на волчонка. Шесть тоже давали живую цепочку, но она
+    // держалась на грани: из восьми seed один срывался в обвал — коровы
+    // вымирали, следом волки, и луг зарастал. Волк размножается медленнее
+    // жертвы, иначе он её попросту доедает.
+    breedAfter: 8
 });
 
 // Ловец призраков: быстрее добычи лишь на пять сотых, поэтому берёт её
@@ -302,6 +300,12 @@ export class Unit extends Creature {
         this.kills = 0;
         this.berserkCounter = 0;
         this.berserkTtl = 0;
+
+        // Временный режим поверх поведения вида; null — обычная жизнь.
+        // Живёт у бойца, а не у всех: берсерк бывает только здесь.
+        // Поведение при этом не затирается: по нему боец остаётся бойцом,
+        // чем бы он ни был занят сейчас.
+        this.state = null;
     }
 
     update(world) {
@@ -376,13 +380,12 @@ defineSpecies(Paper, {
 // --- Хозяйство: ресурсы, постройки и носильщики между ними ---
 
 // Постройка: не двигается, копит запас и отдаёт его носильщикам.
-// stock — что принято, goods — что готово к вывозу; складу хватает первого,
-// заводу нужны оба, рынку — только второе.
+// stock — что здесь лежит: складу это сырьё на вывоз, рынку — проданное.
+// Завод добавляет к этому goods, готовый товар.
 export class Place extends Base {
     constructor(x, y) {
         super(x, y);
         this.stock = 0;
-        this.goods = 0;
     }
 
     receive() {
@@ -422,6 +425,13 @@ defineSpecies(Store, { color: 'saddlebrown' });
 
 // Завод копит сырьё и переводит его в товар: PARTS единиц на один товар.
 export class Plant extends Place {
+    constructor(x, y) {
+        super(x, y);
+        // готовый товар: у склада и рынка его нет, отдавать им нечего кроме
+        // того, что приняли
+        this.goods = 0;
+    }
+
     update() {
         if (this.stock >= PARTS) {
             this.stock -= PARTS;
@@ -444,12 +454,9 @@ export class Plant extends Place {
 
 defineSpecies(Plant, { color: 'steelblue', radius: 18 });
 
-// Рынок только принимает: проданный товар обратно не забирают.
+// Рынок только принимает: проданный товар обратно не забирают,
+// и накопленное лежит в том же stock.
 export class Market extends Place {
-    receive() {
-        this.goods += 1;
-    }
-
     canGive() {
         return false;
     }
@@ -468,12 +475,9 @@ export class Carrier extends Creature {
 
 defineSpecies(Carrier, {
     behavior: Behavior.CARRY,
-    radius: 8,
-    speed: 1,
     // хозяйство живёт дольше луга: работники должны пережить цепочку,
     // а не вымереть на полпути
     ttl: MINUTE * 15,
-    color: 'olive',
     // куда сдавать груз; откуда брать — в target
     dropAt: null
 });
@@ -500,20 +504,6 @@ export const LIFERS = {
     Tree, Ore, Store, Plant, Market, Logger, Miner, Carter, Trader
 };
 
-// Имя вида берётся из ключа реестра, а не пишется в описании отдельной
-// строкой. Оно и так есть дважды — в имени класса и в ключе, — и третий
-// экземпляр рано или поздно разошёлся бы с ними. Причём разошёлся бы тихо:
-// опечатка не мешает createLifer (тот идёт по реестру), но typeIndex
-// не находит такого вида и отдаёт ноль — камень стал бы в истории травой.
-//
-// Из ключа, а не из Model.name: ключ — это имя свойства, его не переименует
-// ни один минификатор, а имя класса переименует.
-for (const [name, Model] of Object.entries(LIFERS)) {
-    Model.prototype.type = name;
-    // в таблицу полей вид попадает наравне с остальным, что он объявляет
-    SPECIES_FIELDS.get(Model).unshift('type');
-}
-
 // Срок жизни хранится в слепке истории двумя байтами, и вид, переживший этот
 // предел, восстанавливался бы с обрезанным ttl — молча и не сразу заметно.
 // Ровно это и случилось, когда работникам хозяйства выдали полчаса жизни.
@@ -535,17 +525,77 @@ for (const [name, Model] of Object.entries(LIFERS)) {
     }
 }
 
+// Связи видов объявлены именами, а хранятся классами: сравнивать ссылку
+// в горячем цикле проще, чем строку, и опечатка отсеивается проверкой выше.
+// Имена при этом остаются в описании вида — читать их так понятнее.
+for (const Model of Object.values(LIFERS)) {
+    for (const field of ['danger', 'target', 'dropAt']) {
+        const wanted = Model.prototype[field];
+        if (typeof wanted === 'string') {
+            Model.prototype[field] = LIFERS[wanted];
+        }
+    }
+}
+
+// Существо опознаётся по своему классу — поля с именем вида у него нет.
+// Имя нужно только там, где на него смотрят снаружи: сценариям, панелям
+// и реестру, — и берётся оно из ключа реестра, а не из Model.name: ключ
+// переживает минификацию, имя класса нет.
 const TYPES = Object.keys(LIFERS);
-const TYPE_INDEX = new Map(TYPES.map((type, index) => [type, index]));
+const TYPE_INDEX = new Map(Object.values(LIFERS).map((Model, index) => [Model, index]));
+const NAME_INDEX = new Map(TYPES.map((name, index) => [name, index]));
 
 export function liferTypes() {
     return TYPES.slice();
 }
 
-// В истории тип хранится числом — это позволяет держать кадр
+// Каталог видов, разложенный по их месту в иерархии. Нужен песочнице:
+// семнадцать видов подряд выбирать неудобно, а группы у них уже есть —
+// это те самые классы, от которых они наследуются.
+//
+// Порядок от частного к общему: вид попадает в первую группу, которой
+// он принадлежит, иначе боец оказался бы просто «животным».
+const KINDS = [
+    { name: 'носильщики', Model: () => Carrier },
+    { name: 'постройки', Model: () => Place },
+    { name: 'бойцы', Model: () => Unit },
+    { name: 'животные', Model: () => Creature },
+    { name: 'неподвижные', Model: () => Base }
+];
+
+export function liferKinds() {
+    const kinds = KINDS.map(({ name }) => ({ name, types: [] }));
+
+    for (const type of TYPES) {
+        const index = KINDS.findIndex(({ Model }) => LIFERS[type].prototype instanceof Model());
+        kinds[index].types.push(type);
+    }
+
+    return kinds.filter((kind) => kind.types.length > 0);
+}
+
+// В истории вид хранится числом — это позволяет держать кадр
 // в типизированном массиве вместо тысяч строк.
-export function typeIndex(type) {
-    return TYPE_INDEX.get(type) ?? 0;
+export function typeIndex(Model) {
+    return TYPE_INDEX.get(Model) ?? 0;
+}
+
+// То же по имени: так спрашивают график и панели, у которых на руках строка.
+export function indexOfType(name) {
+    return NAME_INDEX.get(name) ?? 0;
+}
+
+// Имя вида по его классу. Нужно там, где вид показывают человеку:
+// в полях danger, target и dropAt лежат классы, и печатать их как есть
+// значило бы вывалить в панель исходник класса целиком.
+export function nameOfType(Model) {
+    return typeByIndex(typeIndex(Model));
+}
+
+// Имя вида существа. Не поле, а поиск по реестру: снаружи имя нужно редко,
+// а в горячем цикле существо опознают по классу.
+export function liferName(lifer) {
+    return nameOfType(lifer.constructor);
 }
 
 export function typeByIndex(index) {
