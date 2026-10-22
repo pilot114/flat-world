@@ -14,14 +14,6 @@ install: ## поставить зависимости
 dev: ## http://localhost:8080
 	npm start
 
-.PHONY: test
-test: ## юнит-тесты ядра (node --test)
-	npm test
-
-.PHONY: lint
-lint: ## статический анализ
-	@echo "линтера нет"
-
 .PHONY: build
 build: ## сборка
 	@echo "сборки нет: статика как есть"
