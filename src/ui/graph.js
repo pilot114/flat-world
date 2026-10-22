@@ -12,154 +12,176 @@ const Y_TICKS = 10;
 // поэтому пауза и перемотка действуют на график так же, как на канвас.
 // types задаёт сценарий: рисуем линии только его видов.
 export class Graph {
-    constructor(selector, world, types, windowSize = 300) {
-        this.windowSize = windowSize;
-        this.paths = new Map();
-        // тик последнего показанного кадра: по нему решаем, изменилось ли окно
-        this.lastTick = null;
-        // верх оси Y, отрисованный сейчас — ось перерисовываем только при смене
-        this.shownTop = null;
-        // сдвиг неполного окна: свежие данные всегда у правого края
-        this.offset = 0;
+  constructor(selector, world, types, windowSize = 300) {
+    this.windowSize = windowSize;
+    this.paths = new Map();
+    // тик последнего показанного кадра: по нему решаем, изменилось ли окно
+    this.lastTick = null;
+    // верх оси Y, отрисованный сейчас — ось перерисовываем только при смене
+    this.shownTop = null;
+    // сдвиг неполного окна: свежие данные всегда у правого края
+    this.offset = 0;
 
-        const svg = document.querySelector(selector);
-        // график пересобирается при смене сценария: оси и линии считаются
-        // от начального населения, дорисовать их к старым нельзя
-        svg.replaceChildren();
+    const svg = document.querySelector(selector);
+    // график пересобирается при смене сценария: оси и линии считаются
+    // от начального населения, дорисовать их к старым нельзя
+    svg.replaceChildren();
 
-        this.width = Number(svg.getAttribute('width')) - MARGIN.left - MARGIN.right;
-        this.height = Number(svg.getAttribute('height')) - MARGIN.top - MARGIN.bottom;
+    this.width = Number(svg.getAttribute('width')) - MARGIN.left - MARGIN.right;
+    this.height = Number(svg.getAttribute('height')) - MARGIN.top - MARGIN.bottom;
 
-        const root = node('g', { transform: `translate(${MARGIN.left},${MARGIN.top})` }, svg);
+    const root = node('g', { transform: `translate(${MARGIN.left},${MARGIN.top})` }, svg);
 
-        this.x = linearScale(windowSize - 1, 0, this.width);
+    this.x = linearScale(windowSize - 1, 0, this.width);
 
-        // окно линий шире холста, поэтому обрезаем их по области графика
-        const clip = node('clipPath', { id: 'graph-clip' }, node('defs', {}, root));
-        node('rect', { width: this.width, height: this.height }, clip);
+    // окно линий шире холста, поэтому обрезаем их по области графика
+    const clip = node('clipPath', { id: 'graph-clip' }, node('defs', {}, root));
+    node('rect', { width: this.width, height: this.height }, clip);
 
-        this.xAxis = node('g', {
-            class: 'axis axis--x',
-            transform: `translate(0,${this.height})`
-        }, root);
-        this.yAxis = node('g', { class: 'axis axis--y' }, root);
+    this.xAxis = node(
+      'g',
+      {
+        class: 'axis axis--x',
+        transform: `translate(0,${this.height})`,
+      },
+      root,
+    );
+    this.yAxis = node('g', { class: 'axis axis--y' }, root);
 
-        this.renderXAxis();
-        this.setTop(Math.max(1, world.maxCounts()));
+    this.renderXAxis();
+    this.setTop(Math.max(1, world.maxCounts()));
 
-        const lines = node('g', { 'clip-path': 'url(#graph-clip)' }, root);
+    const lines = node('g', { 'clip-path': 'url(#graph-clip)' }, root);
 
-        // линия на каждый вид сценария, даже если его пока нет в мире
-        for (const type of types) {
-            this.paths.set(type, node('path', {
-                class: 'line',
-                stroke: liferColor(type)
-            }, lines));
-        }
+    // линия на каждый вид сценария, даже если его пока нет в мире
+    for (const type of types) {
+      this.paths.set(
+        type,
+        node(
+          'path',
+          {
+            class: 'line',
+            stroke: liferColor(type),
+          },
+          lines,
+        ),
+      );
+    }
+  }
+
+  // position === null — конец истории (живой режим), иначе выбранный кадр.
+  render(history, position) {
+    const end = position === null ? history.length - 1 : position;
+    if (end < 0) {
+      return;
     }
 
-    // position === null — конец истории (живой режим), иначе выбранный кадр.
-    render(history, position) {
-        const end = position === null ? history.length - 1 : position;
-        if (end < 0) {
-            return;
-        }
+    // Окно не сдвинулось (пауза) — перестраивать пути незачем.
+    // Опознаём его по тику последнего кадра, а не по номеру: когда история
+    // упирается в лимит и начинает вытеснять старые кадры, номер последнего
+    // застывает навсегда, а мир продолжает идти — по номеру график замирал.
+    const last = history.tickAt(end);
+    if (last === this.lastTick) {
+      return;
+    }
+    this.lastTick = last;
 
-        // Окно не сдвинулось (пауза) — перестраивать пути незачем.
-        // Опознаём его по тику последнего кадра, а не по номеру: когда история
-        // упирается в лимит и начинает вытеснять старые кадры, номер последнего
-        // застывает навсегда, а мир продолжает идти — по номеру график замирал.
-        const last = history.tickAt(end);
-        if (last === this.lastTick) {
-            return;
-        }
-        this.lastTick = last;
+    const start = Math.max(0, end - this.windowSize + 1);
+    this.offset = this.windowSize - (end - start + 1);
 
-        const start = Math.max(0, end - this.windowSize + 1);
-        this.offset = this.windowSize - (end - start + 1);
-
-        // ряды берём один раз: они же идут и в пересчёт оси, и в пути линий
-        const series = new Map();
-        for (const type of this.paths.keys()) {
-            series.set(type, history.seriesOf(type, start, end));
-        }
-
-        this.rescale(series);
-
-        for (const [type, path] of this.paths) {
-            path.setAttribute('d', linePath(series.get(type), (i) => this.x(i + this.offset), this.y));
-        }
+    // ряды берём один раз: они же идут и в пересчёт оси, и в пути линий
+    const series = new Map();
+    for (const type of this.paths.keys()) {
+      series.set(type, history.seriesOf(type, start, end));
     }
 
-    // Ось Y тянется за окном: видов может стать больше, чем было вначале,
-    // и без пересчёта линии уходят вверх за край и срезаются clip-path.
-    rescale(series) {
-        let max = 0;
+    this.rescale(series);
 
-        for (const values of series.values()) {
-            for (const value of values) {
-                if (value > max) {
-                    max = value;
-                }
-            }
-        }
+    for (const [type, path] of this.paths) {
+      path.setAttribute(
+        'd',
+        linePath(series.get(type), (i) => this.x(i + this.offset), this.y),
+      );
+    }
+  }
 
-        // верх округляем до кратного шагу делений, поэтому колебания
-        // численности не дёргают ось на каждом кадре
-        const top = niceMax(Math.max(1, max), Y_TICKS);
-        if (top !== this.shownTop) {
-            this.setTop(top);
+  // Ось Y тянется за окном: видов может стать больше, чем было вначале,
+  // и без пересчёта линии уходят вверх за край и срезаются clip-path.
+  rescale(series) {
+    let max = 0;
+
+    for (const values of series.values()) {
+      for (const value of values) {
+        if (value > max) {
+          max = value;
         }
+      }
     }
 
-    setTop(top) {
-        this.shownTop = top;
-        this.y = linearScale(top, this.height, 0);
-        this.renderYAxis();
+    // верх округляем до кратного шагу делений, поэтому колебания
+    // численности не дёргают ось на каждом кадре
+    const top = niceMax(Math.max(1, max), Y_TICKS);
+    if (top !== this.shownTop) {
+      this.setTop(top);
     }
+  }
 
-    renderYAxis() {
-        this.yAxis.replaceChildren();
-        node('path', { class: 'domain', d: `M0,0V${this.height}` }, this.yAxis);
+  setTop(top) {
+    this.shownTop = top;
+    this.y = linearScale(top, this.height, 0);
+    this.renderYAxis();
+  }
 
-        for (const value of ticks(this.shownTop, Y_TICKS)) {
-            const tick = node('g', {
-                class: 'tick',
-                transform: `translate(0,${this.y(value)})`
-            }, this.yAxis);
+  renderYAxis() {
+    this.yAxis.replaceChildren();
+    node('path', { class: 'domain', d: `M0,0V${this.height}` }, this.yAxis);
 
-            node('line', { x2: -6 }, tick);
-            node('text', { x: -9, dy: '0.32em', 'text-anchor': 'end' }, tick).textContent = value;
-        }
+    for (const value of ticks(this.shownTop, Y_TICKS)) {
+      const tick = node(
+        'g',
+        {
+          class: 'tick',
+          transform: `translate(0,${this.y(value)})`,
+        },
+        this.yAxis,
+      );
+
+      node('line', { x2: -6 }, tick);
+      node('text', { x: -9, dy: '0.32em', 'text-anchor': 'end' }, tick).textContent = value;
     }
+  }
 
-    // Ось X неподвижна: окно всегда одной ширины в кадрах.
-    renderXAxis() {
-        node('path', { class: 'domain', d: `M0,0H${this.width}` }, this.xAxis);
+  // Ось X неподвижна: окно всегда одной ширины в кадрах.
+  renderXAxis() {
+    node('path', { class: 'domain', d: `M0,0H${this.width}` }, this.xAxis);
 
-        for (const value of ticks(this.windowSize - 1, X_TICKS)) {
-            const tick = node('g', {
-                class: 'tick',
-                transform: `translate(${this.x(value)},0)`
-            }, this.xAxis);
+    for (const value of ticks(this.windowSize - 1, X_TICKS)) {
+      const tick = node(
+        'g',
+        {
+          class: 'tick',
+          transform: `translate(${this.x(value)},0)`,
+        },
+        this.xAxis,
+      );
 
-            node('line', { y2: 6 }, tick);
-            node('text', { y: 9, dy: '0.71em', 'text-anchor': 'middle' }, tick).textContent = value;
-        }
+      node('line', { y2: 6 }, tick);
+      node('text', { y: 9, dy: '0.71em', 'text-anchor': 'middle' }, tick).textContent = value;
     }
+  }
 }
 
 // Создаёт узел SVG: у них своё пространство имён, обычный createElement
 // собрал бы элемент, который браузер не станет рисовать.
 function node(name, attrs, parent) {
-    const el = document.createElementNS(NS, name);
+  const el = document.createElementNS(NS, name);
 
-    for (const [key, value] of Object.entries(attrs)) {
-        el.setAttribute(key, value);
-    }
-    if (parent) {
-        parent.appendChild(el);
-    }
+  for (const [key, value] of Object.entries(attrs)) {
+    el.setAttribute(key, value);
+  }
+  if (parent) {
+    parent.appendChild(el);
+  }
 
-    return el;
+  return el;
 }

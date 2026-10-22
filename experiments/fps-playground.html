@@ -1,119 +1,124 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-<head>
-	<meta charset="UTF-8">
-	<title>Песочница fps</title>
-	<style>
-		body {
-			font-family: Helvetica, Arial, sans-serif;
-			background-color: cornsilk;
-			padding: 1em;
-		}
-		canvas {
-			background-color: #ddd;
-		}
-		.controls {
-			display: flex;
-			gap: 2em;
-			align-items: flex-end;
-			margin-bottom: 1em;
-		}
-		.controls label {
-			display: flex;
-			flex-direction: column;
-			font-size: 13px;
-			font-weight: bold;
-		}
-		.controls input {
-			width: 100px;
-			font: inherit;
-			font-weight: normal;
-		}
-		output {
-			font-variant-numeric: tabular-nums;
-		}
-	</style>
-</head>
-<body>
-	<h1>Песочница fps</h1>
-	<p>Слева частота регулируется, справа всегда 60 fps.</p>
-	<p>
-		Реальная частота немного скачет из-за особенностей работы браузеров.
-		Частота монитора тоже имеет значение — чем больше, тем лучше =)
-	</p>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Песочница fps</title>
+    <style>
+      body {
+        font-family: Helvetica, Arial, sans-serif;
+        background-color: cornsilk;
+        padding: 1em;
+      }
+      canvas {
+        background-color: #ddd;
+      }
+      .controls {
+        display: flex;
+        gap: 2em;
+        align-items: flex-end;
+        margin-bottom: 1em;
+      }
+      .controls label {
+        display: flex;
+        flex-direction: column;
+        font-size: 13px;
+        font-weight: bold;
+      }
+      .controls input {
+        width: 100px;
+        font: inherit;
+        font-weight: normal;
+      }
+      output {
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Песочница fps</h1>
+    <p>Слева частота регулируется, справа всегда 60 fps.</p>
+    <p>
+      Реальная частота немного скачет из-за особенностей работы браузеров. Частота монитора тоже имеет значение — чем
+      больше, тем лучше =)
+    </p>
 
-	<div class="controls">
-		<label>тестируемый fps
-			<input id="test_fps" type="number" min="10" max="120" value="30" step="10">
-		</label>
-		<label>скорость анимации
-			<input id="test_speed" type="number" min="1" max="10" value="3" step="1">
-		</label>
-		<label>реальный fps
-			<output id="real_fps">—</output>
-		</label>
-	</div>
+    <div class="controls">
+      <label
+        >тестируемый fps
+        <input id="test_fps" type="number" min="10" max="120" value="30" step="10" />
+      </label>
+      <label
+        >скорость анимации
+        <input id="test_speed" type="number" min="1" max="10" value="3" step="1" />
+      </label>
+      <label
+        >реальный fps
+        <output id="real_fps">—</output>
+      </label>
+    </div>
 
-	<canvas id="canvas_1" width="500" height="500"></canvas>
-	<canvas id="canvas_2" width="500" height="500"></canvas>
+    <canvas id="canvas_1" width="500" height="500"></canvas>
+    <canvas id="canvas_2" width="500" height="500"></canvas>
 
-<script>
-	const SIZE = 500;
-	const ETALON_FPS = 60;
+    <script>
+      const SIZE = 500;
+      const ETALON_FPS = 60;
 
-	function drawCircle(context, x, y) {
-		context.fillStyle = 'green';
-		context.beginPath();
-		context.arc(x, y, 50, 0, Math.PI * 2);
-		context.closePath();
-		context.fill();
-	}
+      function drawCircle(context, x, y) {
+        context.fillStyle = 'green';
+        context.beginPath();
+        context.arc(x, y, 50, 0, Math.PI * 2);
+        context.closePath();
+        context.fill();
+      }
 
-	// Один канвас: рисует с частотой fps, скорость берёт из getSpeed().
-	// onFps, если передан, получает измеренную реальную частоту.
-	function runCanvas(context, fps, getSpeed, onFps) {
-		let prevTime = Date.now();
+      // Один канвас: рисует с частотой fps, скорость берёт из getSpeed().
+      // onFps, если передан, получает измеренную реальную частоту.
+      function runCanvas(context, fps, getSpeed, onFps) {
+        let prevTime = Date.now();
 
-		return setInterval(function () {
-			context.clearRect(0, 0, SIZE, SIZE);
+        return setInterval(function () {
+          context.clearRect(0, 0, SIZE, SIZE);
 
-			// «замедляем» время
-			const freezeTime = Math.floor(prevTime / 10);
-			// масштабируем до градусов и переводим в радианы
-			const degree = (freezeTime % 360) * getSpeed();
-			const theta = degree * (2 * Math.PI / 360);
+          // «замедляем» время
+          const freezeTime = Math.floor(prevTime / 10);
+          // масштабируем до градусов и переводим в радианы
+          const degree = (freezeTime % 360) * getSpeed();
+          const theta = degree * ((2 * Math.PI) / 360);
 
-			drawCircle(context, 250 + 100 * Math.cos(theta), 250 - 150 * Math.sin(theta));
+          drawCircle(context, 250 + 100 * Math.cos(theta), 250 - 150 * Math.sin(theta));
 
-			const now = Date.now();
-			if (onFps && now > prevTime) {
-				onFps(Math.round(1000 / (now - prevTime)));
-			}
-			prevTime = now;
-		}, 1000 / fps);
-	}
+          const now = Date.now();
+          if (onFps && now > prevTime) {
+            onFps(Math.round(1000 / (now - prevTime)));
+          }
+          prevTime = now;
+        }, 1000 / fps);
+      }
 
-	window.addEventListener('load', function () {
-		const testContext = document.getElementById('canvas_1').getContext('2d');
-		const etalonContext = document.getElementById('canvas_2').getContext('2d');
+      window.addEventListener('load', function () {
+        const testContext = document.getElementById('canvas_1').getContext('2d');
+        const etalonContext = document.getElementById('canvas_2').getContext('2d');
 
-		const fpsInput = document.getElementById('test_fps');
-		const speedInput = document.getElementById('test_speed');
-		const realFps = document.getElementById('real_fps');
+        const fpsInput = document.getElementById('test_fps');
+        const speedInput = document.getElementById('test_speed');
+        const realFps = document.getElementById('real_fps');
 
-		const getSpeed = () => Number(speedInput.value) || 1;
-		const showFps = (value) => { realFps.textContent = value; };
+        const getSpeed = () => Number(speedInput.value) || 1;
+        const showFps = (value) => {
+          realFps.textContent = value;
+        };
 
-		let testInterval = runCanvas(testContext, Number(fpsInput.value), getSpeed, showFps);
-		runCanvas(etalonContext, ETALON_FPS, getSpeed);
+        let testInterval = runCanvas(testContext, Number(fpsInput.value), getSpeed, showFps);
+        runCanvas(etalonContext, ETALON_FPS, getSpeed);
 
-		// Частоту нельзя изменить у существующего интервала — пересоздаём его,
-		// обязательно погасив старый.
-		fpsInput.addEventListener('change', function () {
-			clearInterval(testInterval);
-			testInterval = runCanvas(testContext, Number(fpsInput.value) || 1, getSpeed, showFps);
-		});
-	});
-</script>
-</body>
+        // Частоту нельзя изменить у существующего интервала — пересоздаём его,
+        // обязательно погасив старый.
+        fpsInput.addEventListener('change', function () {
+          clearInterval(testInterval);
+          testInterval = runCanvas(testContext, Number(fpsInput.value) || 1, getSpeed, showFps);
+        });
+      });
+    </script>
+  </body>
 </html>

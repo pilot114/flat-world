@@ -6,6 +6,16 @@
   "private": true,
   "scripts": {
     "start": "node serve.mjs",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "check": "eslint . && prettier --check .",
+    "fix": "eslint --fix . ; prettier --write ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-html": "^8.2.1",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10"
   }
 }

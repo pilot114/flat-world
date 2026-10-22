@@ -1,337 +1,343 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
-<head>
-	<meta charset="UTF-8">
-	<title>flat world</title>
-	<!-- Иконка встроена в страницу: иначе браузер просит /favicon.ico
+  <head>
+    <meta charset="UTF-8" />
+    <title>flat world</title>
+    <!-- Иконка встроена в страницу: иначе браузер просит /favicon.ico
 	     у сервера и получает 404 в консоль на каждой загрузке. -->
-	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23fff8dc'/%3E%3Ccircle cx='5' cy='6' r='2.5' fill='%23228b22'/%3E%3Ccircle cx='11' cy='9' r='3' fill='%23808080'/%3E%3C/svg%3E">
-	<style>
-		body {
-			background-color: cornsilk;
-			font-family: Helvetica, Arial, sans-serif;
-			margin: 0;
-			padding: 1em;
-		}
-		/* Все переключатели — вкладки сценариев, вкладки правой колонки
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23fff8dc'/%3E%3Ccircle cx='5' cy='6' r='2.5' fill='%23228b22'/%3E%3Ccircle cx='11' cy='9' r='3' fill='%23808080'/%3E%3C/svg%3E"
+    />
+    <style>
+      body {
+        background-color: cornsilk;
+        font-family: Helvetica, Arial, sans-serif;
+        margin: 0;
+        padding: 1em;
+      }
+      /* Все переключатели — вкладки сценариев, вкладки правой колонки
 		   и ряд скоростей — устроены одинаково: группа радиокнопок вплотную.
 		   Выбран ровно один, соседи гаснут сами, подсветку задаёт CSS. */
-		.chips {
-			display: flex;
-		}
-		.chip input {
-			position: absolute;
-			opacity: 0;
-			pointer-events: none;
-		}
-		.chip span {
-			display: inline-block;
-			border: 1px solid #c8bfa4;
-			background-color: #f2ead6;
-			color: #555;
-			cursor: pointer;
-		}
-		/* соседние делят границу, скругление — только по краям ряда */
-		.chip + .chip span {
-			margin-left: -1px;
-		}
-		.chip:first-child span {
-			border-radius: 3px 0 0 3px;
-		}
-		.chip:last-child span {
-			border-radius: 0 3px 3px 0;
-		}
-		.chip input:checked + span {
-			background-color: #555;
-			border-color: #555;
-			color: cornsilk;
-			/* выбранная перекрывает соседей, иначе её тёмная рамка
+      .chips {
+        display: flex;
+      }
+      .chip input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .chip span {
+        display: inline-block;
+        border: 1px solid #c8bfa4;
+        background-color: #f2ead6;
+        color: #555;
+        cursor: pointer;
+      }
+      /* соседние делят границу, скругление — только по краям ряда */
+      .chip + .chip span {
+        margin-left: -1px;
+      }
+      .chip:first-child span {
+        border-radius: 3px 0 0 3px;
+      }
+      .chip:last-child span {
+        border-radius: 0 3px 3px 0;
+      }
+      .chip input:checked + span {
+        background-color: #555;
+        border-color: #555;
+        color: cornsilk;
+        /* выбранная перекрывает соседей, иначе её тёмная рамка
 			   уходит под светлую соседнюю */
-			position: relative;
-		}
-		#tabs {
-			width: 1000px;
-			padding-bottom: 0.75em;
-		}
-		#tabs .chip span {
-			padding: 6px 14px;
-			font-size: 13px;
-		}
-		#sideTabs .chip span {
-			padding: 4px 10px;
-			font-size: 12px;
-		}
-		/* высота фиксирована под три строки: описания разной длины иначе
+        position: relative;
+      }
+      #tabs {
+        width: 1000px;
+        padding-bottom: 0.75em;
+      }
+      #tabs .chip span {
+        padding: 6px 14px;
+        font-size: 13px;
+      }
+      #sideTabs .chip span {
+        padding: 4px 10px;
+        font-size: 12px;
+      }
+      /* высота фиксирована под три строки: описания разной длины иначе
 		   двигали бы канвас при переключении вкладок */
-		#scenarioInfo {
-			margin: 0;
-			width: 1000px;
-			height: 3.9em;
-			font-size: 13px;
-			line-height: 1.3;
-			color: #555;
-			padding-bottom: 1em;
-		}
-		/* Панели живут во второй колонке и стоят друг под другом: канвасу
+      #scenarioInfo {
+        margin: 0;
+        width: 1000px;
+        height: 3.9em;
+        font-size: 13px;
+        line-height: 1.3;
+        color: #555;
+        padding-bottom: 1em;
+      }
+      /* Панели живут во второй колонке и стоят друг под другом: канвасу
 		   нужна вся ширина, а им — общая вертикаль рядом с ним. */
-		#side {
-			display: flex;
-			flex-direction: column;
-			gap: 0.75em;
-			flex: 0 0 400px;
-		}
-		#statsPanel, #statePanel {
-			display: flex;
-			flex-direction: column;
-			gap: 0.75em;
-		}
-		/* Показана одна вкладка из двух — переключает полоска сверху.
+      #side {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75em;
+        flex: 0 0 400px;
+      }
+      #statsPanel,
+      #statePanel {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75em;
+      }
+      /* Показана одна вкладка из двух — переключает полоска сверху.
 		   Селектор с id, а не просто .hidden: правило выше тоже по id,
 		   и класс сам по себе его не перебивает — обе вкладки оставались
 		   видимыми, хотя класс навешивался правильно. */
-		#statsPanel.hidden, #statePanel.hidden {
-			display: none;
-		}
-		#worldInfo {
-			max-height: 9em;
-			overflow-y: auto;
-		}
-		#selectPanel {
-			display: flex;
-			flex-direction: column;
-			gap: 0.5em;
-		}
-		#selectInfo {
-			max-height: 14em;
-			overflow: auto;
-		}
-		/* Поля выделенного — таблицей: колонки классы, строки поля.
+      #statsPanel.hidden,
+      #statePanel.hidden {
+        display: none;
+      }
+      #worldInfo {
+        max-height: 9em;
+        overflow-y: auto;
+      }
+      #selectPanel {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5em;
+      }
+      #selectInfo {
+        max-height: 14em;
+        overflow: auto;
+      }
+      /* Поля выделенного — таблицей: колонки классы, строки поля.
 		   Так видно, что и где переопределено, без щелчков по вкладкам. */
-		.fields {
-			border-collapse: collapse;
-			font-size: 11px;
-			font-variant-numeric: tabular-nums;
-		}
-		.fields th, .fields td {
-			border: 1px solid #ded3b4;
-			padding: 1px 5px;
-			text-align: right;
-			white-space: nowrap;
-		}
-		.fields th {
-			font-weight: normal;
-			text-align: left;
-			color: #555;
-		}
-		/* класс не объявлял это поле — значение пришло сверху по цепочке */
-		.fields td.inherited {
-			background-color: #e3d9bd;
-		}
-		/* В колонке flex-basis задаёт высоту, а не ширину: правило от прежней
+      .fields {
+        border-collapse: collapse;
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+      .fields th,
+      .fields td {
+        border: 1px solid #ded3b4;
+        padding: 1px 5px;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .fields th {
+        font-weight: normal;
+        text-align: left;
+        color: #555;
+      }
+      /* класс не объявлял это поле — значение пришло сверху по цепочке */
+      .fields td.inherited {
+        background-color: #e3d9bd;
+      }
+      /* В колонке flex-basis задаёт высоту, а не ширину: правило от прежней
 		   горизонтальной раскладки растягивало SVG до 400px при своих 200
 		   и оставляло полсотни процентов пустоты снизу. */
-		#graph {
-			flex: 0 0 auto;
-			width: 400px;
-		}
-		/* цвет линии задаётся атрибутом stroke по виду существа —
+      #graph {
+        flex: 0 0 auto;
+        width: 400px;
+      }
+      /* цвет линии задаётся атрибутом stroke по виду существа —
 		   правило CSS перебило бы его, поэтому цвета здесь нет */
-		.line {
-			fill: none;
-			stroke-width: 1.5px;
-		}
-		/* оси рисуются вручную, поэтому их вид задаётся здесь целиком */
-		.axis .domain,
-		.axis .tick line {
-			stroke: #000;
-			fill: none;
-		}
-		.axis text {
-			font-family: sans-serif;
-			font-size: 10px;
-			fill: #000;
-		}
-		#canvas {
-			background-color: #ddd;
-			display: block;
-		}
-		#species {
-			font-size: 13px;
-		}
-		/* Каталог: пока видов мало — столбик, а в песочнице их семнадцать,
+      .line {
+        fill: none;
+        stroke-width: 1.5px;
+      }
+      /* оси рисуются вручную, поэтому их вид задаётся здесь целиком */
+      .axis .domain,
+      .axis .tick line {
+        stroke: #000;
+        fill: none;
+      }
+      .axis text {
+        font-family: sans-serif;
+        font-size: 10px;
+        fill: #000;
+      }
+      #canvas {
+        background-color: #ddd;
+        display: block;
+      }
+      #species {
+        font-size: 13px;
+      }
+      /* Каталог: пока видов мало — столбик, а в песочнице их семнадцать,
 		   и подряд такой список взглядом не окинуть. Тогда он раскладывается
 		   в две колонки и разбивается по группам иерархии. */
-		.catalog.grouped {
-			display: grid;
-			grid-template-columns: 1fr 1fr;
-			gap: 0 1em;
-		}
-		.catalog-kind {
-			grid-column: 1 / -1;
-			margin-top: 0.4em;
-			font-size: 11px;
-			color: #8a7f63;
-		}
-		/* ластик берёт цвет фона, поэтому нужен контур — иначе его не видно */
-		.species.eraser .species-dot {
-			border: 1px solid #8a7f63;
-		}
-		/* кнопка стоит под каталогом и появляется только в песочнице */
-		#forget {
-			align-self: flex-start;
-			font-size: 11px;
-			padding: 3px 8px;
-			border-radius: 3px;
-		}
-		#forget.hidden {
-			display: none;
-		}
-		/* цвет, название, количество — легенда и палитра одновременно */
-		.species {
-			display: flex;
-			align-items: center;
-			gap: 0.5em;
-			padding: 2px 0;
-			cursor: pointer;
-		}
-		.species.active .species-name {
-			font-weight: bold;
-			text-decoration: underline;
-		}
-		.species-dot {
-			width: 10px;
-			height: 10px;
-			border-radius: 50%;
-		}
-		.species-name {
-			flex: 1;
-		}
-		.species-count {
-			font-variant-numeric: tabular-nums;
-		}
-		/* Перемотка и скорость — одна строка под канвасом: обе про ход
+      .catalog.grouped {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0 1em;
+      }
+      .catalog-kind {
+        grid-column: 1 / -1;
+        margin-top: 0.4em;
+        font-size: 11px;
+        color: #8a7f63;
+      }
+      /* ластик берёт цвет фона, поэтому нужен контур — иначе его не видно */
+      .species.eraser .species-dot {
+        border: 1px solid #8a7f63;
+      }
+      /* кнопка стоит под каталогом и появляется только в песочнице */
+      #forget {
+        align-self: flex-start;
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 3px;
+      }
+      #forget.hidden {
+        display: none;
+      }
+      /* цвет, название, количество — легенда и палитра одновременно */
+      .species {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        padding: 2px 0;
+        cursor: pointer;
+      }
+      .species.active .species-name {
+        font-weight: bold;
+        text-decoration: underline;
+      }
+      .species-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+      .species-name {
+        flex: 1;
+      }
+      .species-count {
+        font-variant-numeric: tabular-nums;
+      }
+      /* Перемотка и скорость — одна строка под канвасом: обе про ход
 		   времени, и разносить их по этажам незачем. Ползунок забирает то,
 		   что осталось от ряда скоростей и подписи. */
-		#controls {
-			display: flex;
-			align-items: center;
-			gap: 1em;
-			width: 1000px;
-			padding-bottom: 0.75em;
-		}
-		#app {
-			flex: 0 0 1000px;
-		}
-		#timeline {
-			flex: 1;
-			/* ползунок не должен схлопнуться до неюзабельного огрызка */
-			min-width: 180px;
-		}
-		#playerLabel {
-			flex: 0 0 175px;
-			font-size: 12px;
-			color: #555;
-		}
-		/* Скорость выбирается из ряда, а не тянется ползунком: значений
+      #controls {
+        display: flex;
+        align-items: center;
+        gap: 1em;
+        width: 1000px;
+        padding-bottom: 0.75em;
+      }
+      #app {
+        flex: 0 0 1000px;
+      }
+      #timeline {
+        flex: 1;
+        /* ползунок не должен схлопнуться до неюзабельного огрызка */
+        min-width: 180px;
+      }
+      #playerLabel {
+        flex: 0 0 175px;
+        font-size: 12px;
+        color: #555;
+      }
+      /* Скорость выбирается из ряда, а не тянется ползунком: значений
 		   немного, они неравномерны, и видеть их все сразу полезнее, чем
 		   угадывать положение движка. Ноль в этом ряду и есть пауза —
 		   отдельная кнопка означала бы два способа остановить время. */
-		#speedControl {
-			display: flex;
-			align-items: center;
-			gap: 0.5em;
-			flex: 0 0 auto;
-		}
-		#speed {
-			display: flex;
-		}
-		#speed .chip span {
-			padding: 3px 8px;
-			font-variant-numeric: tabular-nums;
-		}
-		/* ноль — это пауза, и её стоит отличать от прочих множителей */
-		.chip.stop input:checked + span {
-			background-color: #8b3a3a;
-			border-color: #8b3a3a;
-		}
-		pre {
-			font-size: 12px;
-			margin: 0;
-			white-space: pre-wrap;
-		}
-		/* Вкладка «состояние» — то, что лежит в истории: расход памяти
+      #speedControl {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        flex: 0 0 auto;
+      }
+      #speed {
+        display: flex;
+      }
+      #speed .chip span {
+        padding: 3px 8px;
+        font-variant-numeric: tabular-nums;
+      }
+      /* ноль — это пауза, и её стоит отличать от прочих множителей */
+      .chip.stop input:checked + span {
+        background-color: #8b3a3a;
+        border-color: #8b3a3a;
+      }
+      pre {
+        font-size: 12px;
+        margin: 0;
+        white-space: pre-wrap;
+      }
+      /* Вкладка «состояние» — то, что лежит в истории: расход памяти
 		   и обозреватель слепков. Смотреть в неё приходится вместе
 		   с картинкой, поэтому она в колонке рядом с канвасом, а не внизу. */
-		#layout {
-			display: flex;
-			align-items: flex-start;
-			gap: 1em;
-		}
-		#memoryInfo {
-			color: #555;
-		}
-		#stateControls {
-			display: flex;
-			flex-direction: column;
-			gap: 0.25em;
-			font-size: 12px;
-			color: #555;
-			padding-bottom: 0.75em;
-		}
-		#stateControls input[type=range] {
-			width: 100%;
-		}
-		#stateFrameLabel, #stateIdLabel {
-			font-variant-numeric: tabular-nums;
-			padding-bottom: 0.5em;
-		}
+      #layout {
+        display: flex;
+        align-items: flex-start;
+        gap: 1em;
+      }
+      #memoryInfo {
+        color: #555;
+      }
+      #stateControls {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25em;
+        font-size: 12px;
+        color: #555;
+        padding-bottom: 0.75em;
+      }
+      #stateControls input[type='range'] {
+        width: 100%;
+      }
+      #stateFrameLabel,
+      #stateIdLabel {
+        font-variant-numeric: tabular-nums;
+        padding-bottom: 0.5em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="layout">
+      <div id="app">
+        <div id="tabs"></div>
+        <p id="scenarioInfo"></p>
+        <div id="controls">
+          <input type="range" id="timeline" min="0" max="0" value="0" disabled />
+          <span id="playerLabel"></span>
+          <div id="speedControl">
+            <span>скорость</span>
+            <div id="speed"></div>
+          </div>
+        </div>
+        <canvas id="canvas"></canvas>
+      </div>
 
-	</style>
-</head>
-<body>
-<div id="layout">
-	<div id="app">
-		<div id="tabs"></div>
-		<p id="scenarioInfo"></p>
-		<div id="controls">
-			<input type="range" id="timeline" min="0" max="0" value="0" disabled>
-			<span id="playerLabel"></span>
-			<div id="speedControl">
-				<span>скорость</span>
-				<div id="speed"></div>
-			</div>
-		</div>
-		<canvas id="canvas"></canvas>
-	</div>
+      <div id="side">
+        <div id="sideTabs"></div>
 
-	<div id="side">
-		<div id="sideTabs"></div>
+        <div id="statsPanel">
+          <pre id="worldInfo"></pre>
+          <svg id="graph" width="400" height="200"></svg>
+          <div id="species"></div>
+          <button id="forget" type="button" class="chip">забыть песочницу</button>
+          <div id="selectPanel">
+            <div id="selectInfo"></div>
+          </div>
+        </div>
 
-		<div id="statsPanel">
-			<pre id="worldInfo"></pre>
-			<svg id="graph" width="400" height="200"></svg>
-			<div id="species"></div>
-			<button id="forget" type="button" class="chip">забыть песочницу</button>
-			<div id="selectPanel">
-				<div id="selectInfo"></div>
-			</div>
-		</div>
+        <div id="statePanel">
+          <pre id="memoryInfo"></pre>
+          <div id="stateControls">
+            <label for="stateFrame">ключевой кадр</label>
+            <input type="range" id="stateFrame" min="0" max="0" value="0" />
+            <span id="stateFrameLabel"></span>
+            <label for="stateId">id существа</label>
+            <input type="range" id="stateId" min="1" max="1" value="1" />
+            <span id="stateIdLabel"></span>
+          </div>
+          <pre id="stateInfo"></pre>
+        </div>
+      </div>
+    </div>
 
-		<div id="statePanel">
-			<pre id="memoryInfo"></pre>
-			<div id="stateControls">
-				<label for="stateFrame">ключевой кадр</label>
-				<input type="range" id="stateFrame" min="0" max="0" value="0">
-				<span id="stateFrameLabel"></span>
-				<label for="stateId">id существа</label>
-				<input type="range" id="stateId" min="1" max="1" value="1">
-				<span id="stateIdLabel"></span>
-			</div>
-			<pre id="stateInfo"></pre>
-		</div>
-	</div>
-</div>
-
-	<script type="module" src="./src/main.js"></script>
-</body>
+    <script type="module" src="./src/main.js"></script>
+  </body>
 </html>

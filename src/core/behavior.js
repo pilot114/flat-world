@@ -3,18 +3,18 @@ import { getNearest, getRange, getRangeSquared } from '../utils/math.js';
 
 // Поведение — постоянная роль вида: чем существо занято всю жизнь.
 export const Behavior = {
-    TIMID: 'timid',
-    HERBIVORE: 'herbivore',
-    PREDATOR: 'predator',
-    COMPETE: 'compete',
-    CARRY: 'carry'
+  TIMID: 'timid',
+  HERBIVORE: 'herbivore',
+  PREDATOR: 'predator',
+  COMPETE: 'compete',
+  CARRY: 'carry',
 };
 
 // Состояние — временный режим поверх роли. Оно перебивает поведение
 // в решении, но не стирает его: боец в берсерке остаётся бойцом,
 // и матч по-прежнему считает его за свой вид.
 export const State = {
-    BERSERK: 'berserk'
+  BERSERK: 'berserk',
 };
 
 const WANDER = { anim: Anim.PARTICLE, vector: null };
@@ -40,35 +40,35 @@ const REST_SHARE = 0.75;
 // Побочные эффекты (поедание соседей) выполняются здесь же.
 // nears — список соседей; передаётся снаружи, чтобы не искать их дважды за тик.
 export function decide(lifer, world, nears = world.getNear(lifer)) {
-    const decider = DECIDERS[lifer.state ?? lifer.behavior];
-    // поведения нет или оно незнакомое — существо просто дрейфует
-    return decider ? decider(lifer, world, nears) : WANDER;
+  const decider = DECIDERS[lifer.state ?? lifer.behavior];
+  // поведения нет или оно незнакомое — существо просто дрейфует
+  return decider ? decider(lifer, world, nears) : WANDER;
 }
 
 // Режим -> функция решения; ключами служат и поведения, и состояния.
 // Все принимают (lifer, world, nears), даже если не всё им нужно:
 // единая сигнатура — цена вызова по таблице.
 const DECIDERS = {
-    [State.BERSERK]: berserk,
-    [Behavior.CARRY]: carry,
-    [Behavior.COMPETE]: compete,
-    [Behavior.HERBIVORE]: herbivore,
-    [Behavior.PREDATOR]: predator,
-    [Behavior.TIMID]: timid
+  [State.BERSERK]: berserk,
+  [Behavior.CARRY]: carry,
+  [Behavior.COMPETE]: compete,
+  [Behavior.HERBIVORE]: herbivore,
+  [Behavior.PREDATOR]: predator,
+  [Behavior.TIMID]: timid,
 };
 
 // Берсерк ест всех подряд.
 function berserk(lifer, world, nears) {
-    const target = getNearest(nears, lifer);
-    if (!target) {
-        return WANDER;
-    }
+  const target = getNearest(nears, lifer);
+  if (!target) {
+    return WANDER;
+  }
 
-    if (isReachable(lifer, target)) {
-        lifer.eat(world, target);
-    }
+  if (isReachable(lifer, target)) {
+    lifer.eat(world, target);
+  }
 
-    return chase(target);
+  return chase(target);
 }
 
 // Носильщик ходит по кругу: с пустыми руками — к источнику, с грузом —
@@ -79,34 +79,34 @@ function berserk(lifer, world, nears) {
 // и радиуса обзора до них обычно не хватает. Зато решение принимается раз
 // в несколько тиков, так что перебор идёт не каждый тик.
 function carry(lifer, world, nears) {
-    const loaded = lifer.load > 0;
-    const wanted = loaded ? lifer.dropAt : lifer.target;
-    const place = world.nearestOf(lifer, wanted, !loaded);
+  const loaded = lifer.load > 0;
+  const wanted = loaded ? lifer.dropAt : lifer.target;
+  const place = world.nearestOf(lifer, wanted, !loaded);
 
-    // брать пока нечего — ждём, а не бродим
-    if (!place) {
-        return wait(lifer, world.nearestOf(lifer, wanted, false));
+  // брать пока нечего — ждём, а не бродим
+  if (!place) {
+    return wait(lifer, world.nearestOf(lifer, wanted, false));
+  }
+
+  // Дошли до места — отдаём или берём груз. Считаем по сумме радиусов,
+  // то есть по касанию тел, а не по одному лишь радиусу места.
+  //
+  // Иначе у мелкого ресурса зона подбора оказывается целиком внутри зоны
+  // расталкивания: руда радиусом 7, носильщик — 8, и его выталкивает
+  // из той самой области, куда надо войти. Одинокий шахтёр залипал так
+  // в четверти случаев — колебался рядом с рудой, пока не истекал срок.
+  // Толкучка, наоборот, выручала: соседи проталкивали его через щель.
+  if (getRange(lifer, place) < place.radius + lifer.radius) {
+    if (loaded) {
+      place.receive();
+      lifer.load = 0;
+      lifer.gainEnergy(lifer.energyMax * REST_SHARE);
+    } else if (place.give(world)) {
+      lifer.load = 1;
     }
+  }
 
-    // Дошли до места — отдаём или берём груз. Считаем по сумме радиусов,
-    // то есть по касанию тел, а не по одному лишь радиусу места.
-    //
-    // Иначе у мелкого ресурса зона подбора оказывается целиком внутри зоны
-    // расталкивания: руда радиусом 7, носильщик — 8, и его выталкивает
-    // из той самой области, куда надо войти. Одинокий шахтёр залипал так
-    // в четверти случаев — колебался рядом с рудой, пока не истекал срок.
-    // Толкучка, наоборот, выручала: соседи проталкивали его через щель.
-    if (getRange(lifer, place) < place.radius + lifer.radius) {
-        if (loaded) {
-            place.receive();
-            lifer.load = 0;
-            lifer.gainEnergy(lifer.energyMax * REST_SHARE);
-        } else if (place.give(world)) {
-            lifer.load = 1;
-        }
-    }
-
-    return chase(place);
+  return chase(place);
 }
 
 // Ожидание у места, где нужное появится: склад наполнится, завод соберёт
@@ -121,114 +121,114 @@ function carry(lifer, world, nears) {
 // придётся, — ждём там, где стоим: искать наугад бессмысленно, а стоя
 // существо ещё и переводит дух, ожидание считается отдыхом.
 function wait(lifer, place) {
-    if (!place || getRange(lifer, place) < place.radius + lifer.radius) {
-        return IDLE;
-    }
+  if (!place || getRange(lifer, place) < place.radius + lifer.radius) {
+    return IDLE;
+  }
 
-    return chase(place);
+  return chase(place);
 }
 
 // Камень-ножницы-бумага: убегаем от danger, догоняем target.
 // Все нужные цели ищем за один проход по соседям.
 function compete(lifer, world, nears) {
-    // остались два вида бойцов: исход решает размер, а не роли danger/target
-    const endgame = world.competitorTypes === 2;
+  // остались два вида бойцов: исход решает размер, а не роли danger/target
+  const endgame = world.competitorTypes === 2;
 
-    let berserker = null;
-    let berserkerRange = Infinity;
-    let danger = null;
-    let dangerRange = Infinity;
-    let target = null;
-    let targetRange = Infinity;
+  let berserker = null;
+  let berserkerRange = Infinity;
+  let danger = null;
+  let dangerRange = Infinity;
+  let target = null;
+  let targetRange = Infinity;
 
-    for (const object of nears) {
-        const range = getRangeSquared(lifer, object);
+  for (const object of nears) {
+    const range = getRangeSquared(lifer, object);
 
-        if (object.state === State.BERSERK && range < berserkerRange) {
-            berserker = object;
-            berserkerRange = range;
-        }
-
-        if (endgame) {
-            // в эндшпиле цель — любой чужак, роль определится размером
-            if (object.constructor !== lifer.constructor && range < targetRange) {
-                target = object;
-                targetRange = range;
-            }
-            continue;
-        }
-
-        if (object.constructor === lifer.danger && range < dangerRange) {
-            danger = object;
-            dangerRange = range;
-        }
-        if (object.constructor === lifer.target && range < targetRange) {
-            target = object;
-            targetRange = range;
-        }
+    if (object.state === State.BERSERK && range < berserkerRange) {
+      berserker = object;
+      berserkerRange = range;
     }
 
-    // берсерк опаснее всех — от него бежим в первую очередь
-    if (berserker) {
-        return escape(berserker);
+    if (endgame) {
+      // в эндшпиле цель — любой чужак, роль определится размером
+      if (object.constructor !== lifer.constructor && range < targetRange) {
+        target = object;
+        targetRange = range;
+      }
+      continue;
     }
 
-    if (endgame && target) {
-        if (target.radius > lifer.radius) {
-            danger = target;
-        }
-        if (target.radius === lifer.radius) {
-            target = null;
-        }
+    if (object.constructor === lifer.danger && range < dangerRange) {
+      danger = object;
+      dangerRange = range;
     }
+    if (object.constructor === lifer.target && range < targetRange) {
+      target = object;
+      targetRange = range;
+    }
+  }
 
-    // съедаем цель и растём
-    if (target && isReachable(lifer, target)) {
-        lifer.eat(world, target);
-        lifer.radius = Math.min(MAX_GROWTH, lifer.radius + 1);
-        lifer.radiusView += 1;
-        lifer.speed += 0.1;
-    }
+  // берсерк опаснее всех — от него бежим в первую очередь
+  if (berserker) {
+    return escape(berserker);
+  }
 
-    if (danger) {
-        return escape(danger);
+  if (endgame && target) {
+    if (target.radius > lifer.radius) {
+      danger = target;
     }
-    return target ? chase(target) : WANDER;
+    if (target.radius === lifer.radius) {
+      target = null;
+    }
+  }
+
+  // съедаем цель и растём
+  if (target && isReachable(lifer, target)) {
+    lifer.eat(world, target);
+    lifer.radius = Math.min(MAX_GROWTH, lifer.radius + 1);
+    lifer.radiusView += 1;
+    lifer.speed += 0.1;
+  }
+
+  if (danger) {
+    return escape(danger);
+  }
+  return target ? chase(target) : WANDER;
 }
 
 // Травоядное: бежит от своей угрозы, иначе идёт есть свою цель.
 function herbivore(lifer, world, nears) {
-    const threat = nearestOfType(lifer, nears, lifer.danger);
-    const food = nearestOfType(lifer, nears, lifer.target);
+  const threat = nearestOfType(lifer, nears, lifer.danger);
+  const food = nearestOfType(lifer, nears, lifer.target);
 
-    if (food && isReachable(lifer, food)) {
-        lifer.eat(world, food);
-    }
+  if (food && isReachable(lifer, food)) {
+    lifer.eat(world, food);
+  }
 
-    if (threat) {
-        return escape(threat);
-    }
-    return food ? chase(food) : WANDER;
+  if (threat) {
+    return escape(threat);
+  }
+  return food ? chase(food) : WANDER;
 }
 
 // Хищник: догоняет и ест свою цель.
 function predator(lifer, world, nears) {
-    const prey = nearestOfType(lifer, nears, lifer.target);
-    if (!prey) {
-        return WANDER;
-    }
+  const prey = nearestOfType(lifer, nears, lifer.target);
+  if (!prey) {
+    return WANDER;
+  }
 
-    if (isReachable(lifer, prey)) {
-        lifer.eat(world, prey);
-    }
+  if (isReachable(lifer, prey)) {
+    lifer.eat(world, prey);
+  }
 
-    return chase(prey);
+  return chase(prey);
 }
 
 // Призрак: убегает от любого соседа. world не нужен — соседи уже переданы.
 function timid(lifer, world, nears) {
-    const nearest = getNearest(nears, lifer);
-    return nearest ? escape(nearest) : WANDER;
+  const nearest = getNearest(nears, lifer);
+  return nearest ? escape(nearest) : WANDER;
 }
 
 // Ближайший сосед заданного вида. Вид — сам класс: сравнение ссылок дешевле
@@ -237,36 +237,36 @@ function timid(lifer, world, nears) {
 // decide() зовётся для каждого существа в каждом тике, и замыкание там —
 // лишняя аллокация на ровном месте.
 function nearestOfType(lifer, nears, type) {
-    if (!type) {
-        return null;
+  if (!type) {
+    return null;
+  }
+
+  let nearest = null;
+  let nearestRange = Infinity;
+
+  for (const object of nears) {
+    if (object.constructor !== type) {
+      continue;
     }
 
-    let nearest = null;
-    let nearestRange = Infinity;
-
-    for (const object of nears) {
-        if (object.constructor !== type) {
-            continue;
-        }
-
-        const range = getRangeSquared(lifer, object);
-        if (range < nearestRange) {
-            nearest = object;
-            nearestRange = range;
-        }
+    const range = getRangeSquared(lifer, object);
+    if (range < nearestRange) {
+      nearest = object;
+      nearestRange = range;
     }
+  }
 
-    return nearest;
+  return nearest;
 }
 
 function isReachable(lifer, target) {
-    return getRange(lifer, target) < lifer.radius;
+  return getRange(lifer, target) < lifer.radius;
 }
 
 function chase(target) {
-    return { anim: Anim.CHASE, vector: { x: target.x, y: target.y } };
+  return { anim: Anim.CHASE, vector: { x: target.x, y: target.y } };
 }
 
 function escape(threat) {
-    return { anim: Anim.ESCAPE, vector: { x: threat.x, y: threat.y } };
+  return { anim: Anim.ESCAPE, vector: { x: threat.x, y: threat.y } };
 }

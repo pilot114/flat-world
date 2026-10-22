@@ -1,0 +1,42 @@
+{
+  "experiments/drawLine.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "experiments/lines-fractal.html": {
+    "no-undef": {
+      "count": 1
+    }
+  },
+  "experiments/lines-lattice.html": {
+    "no-undef": {
+      "count": 2
+    }
+  },
+  "src/core/behavior.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "src/main.js": {
+    "no-unused-vars": {
+      "count": 2
+    }
+  },
+  "src/ui/statePanel.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  },
+  "src/utils/store.js": {
+    "no-unused-vars": {
+      "count": 3
+    }
+  },
+  "test/world.test.js": {
+    "no-unused-vars": {
+      "count": 1
+    }
+  }
+}
